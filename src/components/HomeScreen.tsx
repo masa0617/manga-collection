@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Series, Volume } from '../types'
 import SeriesCard from './SeriesCard'
 
@@ -30,6 +31,8 @@ export default function HomeScreen({
   onDeleteSeries,
   onAdd,
 }: Props) {
+  const [editMode, setEditMode] = useState(false)
+
   const sorted = [...seriesList].sort((a, b) => {
     if (sortMode === 'recent') {
       return latestActivityAt(volumesBySeriesId[b.id] ?? []) - latestActivityAt(volumesBySeriesId[a.id] ?? [])
@@ -42,12 +45,21 @@ export default function HomeScreen({
       <header className="screen__header">
         <h1>マンガ棚</h1>
         <div className="header-actions">
-          <button className="link-button" onClick={onToggleSortMode}>
-            {sortMode === 'kana' ? '最近追加した順' : '50音順'}
-          </button>
-          <button className="link-button" onClick={onToggleViewMode}>
-            {viewMode === 'grid' ? 'リスト表示' : '表紙表示'}
-          </button>
+          {!editMode && (
+            <>
+              <button className="link-button" onClick={onToggleSortMode}>
+                {sortMode === 'kana' ? '最近追加した順' : '50音順'}
+              </button>
+              <button className="link-button" onClick={onToggleViewMode}>
+                {viewMode === 'grid' ? 'リスト表示' : '表紙表示'}
+              </button>
+            </>
+          )}
+          {sorted.length > 0 && (
+            <button className="link-button" onClick={() => setEditMode((m) => !m)}>
+              {editMode ? '完了' : '編集'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -61,6 +73,7 @@ export default function HomeScreen({
               series={s}
               volumes={volumesBySeriesId[s.id] ?? []}
               viewMode="grid"
+              editMode={editMode}
               onClick={() => onSelectSeries(s.id)}
               onDelete={() => onDeleteSeries(s.id)}
             />
@@ -74,6 +87,7 @@ export default function HomeScreen({
               series={s}
               volumes={volumesBySeriesId[s.id] ?? []}
               viewMode="list"
+              editMode={editMode}
               onClick={() => onSelectSeries(s.id)}
               onDelete={() => onDeleteSeries(s.id)}
             />

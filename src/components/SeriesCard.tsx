@@ -7,11 +7,12 @@ interface Props {
   series: Series
   volumes: Volume[]
   viewMode: 'grid' | 'list'
+  editMode: boolean
   onClick: () => void
   onDelete: () => void
 }
 
-export default function SeriesCard({ series, volumes, viewMode, onClick, onDelete }: Props) {
+export default function SeriesCard({ series, volumes, viewMode, editMode, onClick, onDelete }: Props) {
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
   const hasMissing = getMissingVolumes(volumes.map((v) => v.volumeNumber)).length > 0
@@ -25,28 +26,33 @@ export default function SeriesCard({ series, volumes, viewMode, onClick, onDelet
 
   if (viewMode === 'list') {
     return (
-      <div className="series-row" onClick={onClick}>
+      <div className="series-row" onClick={editMode ? undefined : onClick}>
         <span className="series-row__name">
           {hasMissing && <span className="warn-mark">⚠️</span>}
           {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
           {series.name}
         </span>
         <span className="series-row__actions">
-          <span className="series-row__count">{volumes.length}冊</span>
-          <button className="link-button link-button--danger" onClick={handleDelete}>
-            削除
-          </button>
+          {editMode ? (
+            <button className="series-row__delete" onClick={handleDelete} aria-label="削除">
+              ×
+            </button>
+          ) : (
+            <span className="series-row__count">{volumes.length}冊</span>
+          )}
         </span>
       </div>
     )
   }
 
   return (
-    <div className="series-card">
-      <button className="series-card__delete" onClick={handleDelete} aria-label="削除">
-        ×
-      </button>
-      <button className="series-card__body" onClick={onClick}>
+    <div className={editMode ? 'series-card series-card--jiggle' : 'series-card'}>
+      {editMode && (
+        <button className="series-card__delete" onClick={handleDelete} aria-label="削除">
+          ×
+        </button>
+      )}
+      <button className="series-card__body" onClick={editMode ? undefined : onClick}>
         <div className="series-card__cover">
           {representativeCover ? (
             <img src={representativeCover} alt={series.name} loading="lazy" />
@@ -54,7 +60,7 @@ export default function SeriesCard({ series, volumes, viewMode, onClick, onDelet
             <div className="series-card__placeholder">{series.name.slice(0, 1)}</div>
           )}
           {hasMissing && <span className="warn-badge">⚠️</span>}
-          {isNewRelease && <span className="new-badge">新刊</span>}
+          {isNewRelease && !editMode && <span className="new-badge">新刊</span>}
         </div>
         <div className="series-card__title">{series.name}</div>
       </button>

@@ -126,17 +126,35 @@ body {
 
 .series-card__delete {
   position: absolute;
-  top: -6px;
-  left: -6px;
+  top: 4px;
+  left: 4px;
   z-index: 3;
   width: 22px;
   height: 22px;
   border-radius: 50%;
   border: none;
-  background: rgba(43, 36, 29, 0.7);
+  background: var(--color-accent-dark);
   color: #fff;
   line-height: 1;
+  font-size: 1rem;
   cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes card-jiggle {
+  0% {
+    transform: rotate(-1deg);
+  }
+  50% {
+    transform: rotate(1deg);
+  }
+  100% {
+    transform: rotate(-1deg);
+  }
+}
+
+.series-card--jiggle .series-card__body {
+  animation: card-jiggle 0.25s infinite ease-in-out;
 }
 
 .series-card__cover {
@@ -242,6 +260,19 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.series-row__delete {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-accent-dark);
+  color: #fff;
+  line-height: 1;
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .series-row__count {
