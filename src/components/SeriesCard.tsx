@@ -1,41 +1,63 @@
+import type { MouseEvent } from 'react'
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
+import { isRecentRelease } from '../utils/publishDate'
 
 interface Props {
   series: Series
   volumes: Volume[]
   viewMode: 'grid' | 'list'
   onClick: () => void
+  onDelete: () => void
 }
 
-export default function SeriesCard({ series, volumes, viewMode, onClick }: Props) {
+export default function SeriesCard({ series, volumes, viewMode, onClick, onDelete }: Props) {
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
-  const representative = sorted[0]
+  const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
   const hasMissing = getMissingVolumes(volumes.map((v) => v.volumeNumber)).length > 0
+  const latestVolume = sorted[sorted.length - 1]
+  const isNewRelease = latestVolume ? isRecentRelease(latestVolume.releaseDateISO) : false
+
+  function handleDelete(e: MouseEvent) {
+    e.stopPropagation()
+    if (confirm(`「${series.name}」を削除しますか？（所持巻もすべて削除されます）`)) onDelete()
+  }
 
   if (viewMode === 'list') {
     return (
-      <button className="series-row" onClick={onClick}>
+      <div className="series-row" onClick={onClick}>
         <span className="series-row__name">
           {hasMissing && <span className="warn-mark">⚠️</span>}
+          {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
           {series.name}
         </span>
-        <span className="series-row__count">{volumes.length}冊</span>
-      </button>
+        <span className="series-row__actions">
+          <span className="series-row__count">{volumes.length}冊</span>
+          <button className="link-button link-button--danger" onClick={handleDelete}>
+            削除
+          </button>
+        </span>
+      </div>
     )
   }
 
   return (
-    <button className="series-card" onClick={onClick}>
-      <div className="series-card__cover">
-        {representative?.coverImageUrl ? (
-          <img src={representative.coverImageUrl} alt={series.name} loading="lazy" />
-        ) : (
-          <div className="series-card__placeholder">{series.name.slice(0, 1)}</div>
-        )}
-        {hasMissing && <span className="warn-badge">⚠️</span>}
-      </div>
-      <div className="series-card__title">{series.name}</div>
-    </button>
+    <div className="series-card">
+      <button className="series-card__delete" onClick={handleDelete} aria-label="削除">
+        ×
+      </button>
+      <button className="series-card__body" onClick={onClick}>
+        <div className="series-card__cover">
+          {representativeCover ? (
+            <img src={representativeCover} alt={series.name} loading="lazy" />
+          ) : (
+            <div className="series-card__placeholder">{series.name.slice(0, 1)}</div>
+          )}
+          {hasMissing && <span className="warn-badge">⚠️</span>}
+          {isNewRelease && <span className="new-badge">新刊</span>}
+        </div>
+        <div className="series-card__title">{series.name}</div>
+      </button>
+    </div>
   )
 }

@@ -1,7 +1,13 @@
 import type { BookInfo } from '../types'
 import { extractVolumeNumberFromLabel } from '../utils/titleParsing'
+import { parsePublishDate } from '../utils/publishDate'
 
-async function fetchWithTimeout(url: string, ms = 6000): Promise<Response | null> {
+// Shorter timeout than a "give the network every benefit of the doubt"
+// default: with ~2000 volumes to register, worst-case latency per scan adds
+// up fast, and these APIs normally answer in well under a second.
+const REQUEST_TIMEOUT_MS = 4000
+
+async function fetchWithTimeout(url: string, ms = REQUEST_TIMEOUT_MS): Promise<Response | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
   try {
@@ -34,6 +40,10 @@ async function lookupOpenBD(isbn: string): Promise<BookInfo | null> {
     author: summary.author || undefined,
     publisher: summary.publisher || undefined,
     coverImageUrl: toHttps(summary.cover || undefined),
+    // openBD's "series" field is the book's imprint/label (e.g. "ジャンプ・
+    // コミックス"), the closest structured proxy we have to a serialization magazine.
+    magazine: summary.series || undefined,
+    releaseDateISO: parsePublishDate(summary.pubdate),
   }
   return info.title || info.author || info.coverImageUrl ? info : null
 }
@@ -54,15 +64,23 @@ async function lookupNdl(isbn: string): Promise<BookInfo | null> {
   const title = item.getElementsByTagName('dc:title')[0]?.textContent?.trim() || undefined
   const author = item.getElementsByTagName('dc:creator')[0]?.textContent?.trim() || undefined
   const publisher = item.getElementsByTagName('dc:publisher')[0]?.textContent?.trim() || undefined
+  const magazine = item.getElementsByTagName('dcndl:seriesTitle')[0]?.textContent?.trim() || undefined
   const volumeLabel = item.getElementsByTagName('dcndl:volume')[0]?.textContent?.trim()
   const volumeNumber = volumeLabel ? extractVolumeNumberFromLabel(volumeLabel) ?? undefined : undefined
-  const info: BookInfo = { title, author, publisher, volumeNumber }
+  const info: BookInfo = { title, author, publisher, magazine, volumeNumber }
   return info.title || info.author ? info : null
 }
 
+// Google Books' keyless/anonymous quota is currently capped at 0 requests/day
+// (confirmed via a live 429 "quota_limit_value: 0" response), so this source
+// is skipped entirely unless a free API key is configured. See README for
+// how to get one - it's what makes cover images and publish dates reliable.
+const GOOGLE_BOOKS_API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_API_KEY as string | undefined
+
 async function lookupGoogleBooks(isbn: string): Promise<BookInfo | null> {
+  if (!GOOGLE_BOOKS_API_KEY) return null
   const res = await fetchWithTimeout(
-    `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&country=JP`
+    `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&country=JP&key=${GOOGLE_BOOKS_API_KEY}`
   )
   if (!res) return null
   const data = await res.json().catch(() => null)
@@ -74,6 +92,7 @@ async function lookupGoogleBooks(isbn: string): Promise<BookInfo | null> {
     author: Array.isArray(v.authors) ? v.authors.join('、') : undefined,
     publisher: v.publisher || undefined,
     coverImageUrl: toHttps(v.imageLinks?.thumbnail || v.imageLinks?.smallThumbnail || undefined),
+    releaseDateISO: parsePublishDate(v.publishedDate),
   }
   return info.title || info.author || info.coverImageUrl ? info : null
 }
@@ -91,6 +110,8 @@ export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {
     author: openBd?.author || ndl?.author || google?.author,
     publisher: openBd?.publisher || ndl?.publisher || google?.publisher,
     coverImageUrl: openBd?.coverImageUrl || google?.coverImageUrl,
+    magazine: openBd?.magazine || ndl?.magazine,
+    releaseDateISO: openBd?.releaseDateISO || google?.releaseDateISO,
     // NDL reports volume as a separate structured field, more reliable than
     // parsing it back out of a combined title string.
     volumeNumber: ndl?.volumeNumber,

@@ -20,6 +20,8 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   const [volumeNumber, setVolumeNumber] = useState('')
   const [isbn, setIsbn] = useState('')
   const [publisher, setPublisher] = useState('')
+  const [magazine, setMagazine] = useState('')
+  const [releaseDateISO, setReleaseDateISO] = useState<string | undefined>(undefined)
   const [coverImageUrl, setCoverImageUrl] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [looking, setLooking] = useState(false)
@@ -45,6 +47,8 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       }
       if (info.author) setAuthor(info.author)
       if (info.publisher) setPublisher(info.publisher)
+      if (info.magazine) setMagazine(info.magazine)
+      if (info.releaseDateISO) setReleaseDateISO(info.releaseDateISO)
       if (info.coverImageUrl) setCoverImageUrl(info.coverImageUrl)
     } else {
       setMessage('書誌情報が見つかりませんでした。手動で入力してください。')
@@ -67,6 +71,8 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       }
       if (info.author) setAuthor((prev) => prev || info.author || '')
       if (info.publisher) setPublisher(info.publisher)
+      if (info.magazine) setMagazine(info.magazine)
+      if (info.releaseDateISO) setReleaseDateISO(info.releaseDateISO)
       if (info.coverImageUrl) setCoverImageUrl(info.coverImageUrl)
       setMessage(null)
     } else {
@@ -84,11 +90,30 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     setSaving(true)
     let series = await findSeriesByName(seriesName.trim())
     if (!series) {
-      series = { id: crypto.randomUUID(), name: seriesName.trim(), author: author.trim(), createdAt: Date.now() }
+      series = {
+        id: crypto.randomUUID(),
+        name: seriesName.trim(),
+        author: author.trim(),
+        createdAt: Date.now(),
+        publisher: publisher || undefined,
+        magazine: magazine || undefined,
+      }
       await saveSeries(series)
-    } else if (!series.author && author.trim()) {
-      series.author = author.trim()
-      await saveSeries(series)
+    } else {
+      let changed = false
+      if (!series.author && author.trim()) {
+        series.author = author.trim()
+        changed = true
+      }
+      if (!series.publisher && publisher) {
+        series.publisher = publisher
+        changed = true
+      }
+      if (!series.magazine && magazine) {
+        series.magazine = magazine
+        changed = true
+      }
+      if (changed) await saveSeries(series)
     }
     await saveVolume({
       id: crypto.randomUUID(),
@@ -97,6 +122,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       isbn: isbn.trim() || undefined,
       coverImageUrl: coverImageUrl || undefined,
       publisher: publisher || undefined,
+      releaseDateISO,
       createdAt: Date.now(),
     })
     await recordVolumeAdded()
@@ -203,6 +229,8 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
                   setIsbn('')
                   setCoverImageUrl('')
                   setPublisher('')
+                  setMagazine('')
+                  setReleaseDateISO(undefined)
                   setMessage(null)
                 }}
               >

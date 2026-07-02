@@ -1,27 +1,30 @@
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
+import { isRecentRelease } from '../utils/publishDate'
+import CoverPicker from './CoverPicker'
 
 interface Props {
   series: Series
   volumes: Volume[]
-  viewMode: 'grid' | 'list'
-  onToggleViewMode: () => void
   onBack: () => void
   onAddVolume: () => void
   onDeleteVolume: (volumeId: string) => void
+  onUpdateCover: (coverUrl: string) => void
 }
 
 export default function SeriesDetailScreen({
   series,
   volumes,
-  viewMode,
-  onToggleViewMode,
   onBack,
   onAddVolume,
   onDeleteVolume,
+  onUpdateCover,
 }: Props) {
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const missing = getMissingVolumes(volumes.map((v) => v.volumeNumber))
+  const latestVolume = sorted[sorted.length - 1]
+  const isNewRelease = latestVolume ? isRecentRelease(latestVolume.releaseDateISO) : false
+  const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
 
   return (
     <div className="screen detail-screen">
@@ -29,14 +32,26 @@ export default function SeriesDetailScreen({
         <button className="link-button" onClick={onBack}>
           ← 戻る
         </button>
-        <button className="link-button" onClick={onToggleViewMode}>
-          {viewMode === 'grid' ? 'リスト表示' : '表紙表示'}
-        </button>
       </header>
 
-      <div className="detail-title">
-        <h1>{series.name}</h1>
-        {series.author && <p className="detail-author">{series.author}</p>}
+      <div className="detail-info">
+        <div className="detail-info__cover">
+          {representativeCover ? (
+            <img src={representativeCover} alt={series.name} />
+          ) : (
+            <div className="detail-info__placeholder">{series.name.slice(0, 1)}</div>
+          )}
+        </div>
+        <div className="detail-info__text">
+          <h1>
+            {series.name}
+            {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
+          </h1>
+          {series.author && <p className="detail-info__field">{series.author}</p>}
+          {series.publisher && <p className="detail-info__field detail-info__field--muted">{series.publisher}</p>}
+          {series.magazine && <p className="detail-info__field detail-info__field--muted">{series.magazine}</p>}
+          <CoverPicker onPick={onUpdateCover} />
+        </div>
       </div>
 
       {missing.length > 0 && (
@@ -45,33 +60,14 @@ export default function SeriesDetailScreen({
 
       {sorted.length === 0 ? (
         <p className="empty-state">巻がまだ登録されていません。</p>
-      ) : viewMode === 'grid' ? (
-        <div className="volume-grid">
-          {sorted.map((v) => (
-            <div className="volume-card" key={v.id} onContextMenu={(e) => e.preventDefault()}>
-              <button
-                className="volume-card__delete"
-                onClick={() => {
-                  if (confirm(`${v.volumeNumber}巻を削除しますか？`)) onDeleteVolume(v.id)
-                }}
-                aria-label="削除"
-              >
-                ×
-              </button>
-              {v.coverImageUrl ? (
-                <img src={v.coverImageUrl} alt={`${v.volumeNumber}巻`} loading="lazy" />
-              ) : (
-                <div className="volume-card__placeholder">{v.volumeNumber}</div>
-              )}
-              <div className="volume-card__label">{v.volumeNumber}巻</div>
-            </div>
-          ))}
-        </div>
       ) : (
         <div className="volume-list">
           {sorted.map((v) => (
             <div className="volume-row" key={v.id}>
-              <span>{v.volumeNumber}巻</span>
+              <span>
+                {v.volumeNumber}巻
+                {v.id === latestVolume?.id && isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
+              </span>
               <button
                 className="link-button link-button--danger"
                 onClick={() => {

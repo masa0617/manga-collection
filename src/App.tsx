@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import HomeScreen from './components/HomeScreen'
+import HomeScreen, { type SortMode } from './components/HomeScreen'
 import SeriesDetailScreen from './components/SeriesDetailScreen'
 import AddScreen from './components/AddScreen'
 import BackupBanner from './components/BackupBanner'
@@ -8,6 +8,8 @@ import {
   getAllVolumes,
   getBackupMeta,
   deleteVolume,
+  deleteSeries,
+  saveSeries,
   markBackedUp,
   exportAllData,
 } from './db'
@@ -23,7 +25,7 @@ export default function App() {
   const [view, setView] = useState<View>('home')
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | null>(null)
   const [homeViewMode, setHomeViewMode] = useState<'grid' | 'list'>('grid')
-  const [detailViewMode, setDetailViewMode] = useState<'grid' | 'list'>('grid')
+  const [sortMode, setSortMode] = useState<SortMode>('kana')
   const [loading, setLoading] = useState(true)
 
   async function refresh() {
@@ -61,6 +63,21 @@ export default function App() {
     await refresh()
   }
 
+  async function handleDeleteSeries(seriesId: string) {
+    await deleteSeries(seriesId)
+    if (selectedSeriesId === seriesId) {
+      setSelectedSeriesId(null)
+      setView('home')
+    }
+    await refresh()
+  }
+
+  async function handleUpdateCover(coverUrl: string) {
+    if (!selectedSeries) return
+    await saveSeries({ ...selectedSeries, customCoverUrl: coverUrl })
+    await refresh()
+  }
+
   if (loading) {
     return <div className="loading-screen">読み込み中…</div>
   }
@@ -75,10 +92,13 @@ export default function App() {
           volumesBySeriesId={volumesBySeriesId}
           viewMode={homeViewMode}
           onToggleViewMode={() => setHomeViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}
+          sortMode={sortMode}
+          onToggleSortMode={() => setSortMode((m) => (m === 'kana' ? 'recent' : 'kana'))}
           onSelectSeries={(id) => {
             setSelectedSeriesId(id)
             setView('detail')
           }}
+          onDeleteSeries={handleDeleteSeries}
           onAdd={() => {
             setSelectedSeriesId(null)
             setView('add')
@@ -90,11 +110,10 @@ export default function App() {
         <SeriesDetailScreen
           series={selectedSeries}
           volumes={volumesBySeriesId[selectedSeries.id] ?? []}
-          viewMode={detailViewMode}
-          onToggleViewMode={() => setDetailViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}
           onBack={() => setView('home')}
           onAddVolume={() => setView('add')}
           onDeleteVolume={handleDeleteVolume}
+          onUpdateCover={handleUpdateCover}
         />
       )}
 
