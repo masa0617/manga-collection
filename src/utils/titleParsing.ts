@@ -22,16 +22,22 @@ const KANJI_DIGITS: Record<string, number> = {
   九: 9,
 }
 
-function toHalfWidthDigits(str: string): string {
-  return str.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+// Full-width Latin letters/digits/punctuation (U+FF01-FF5E) and the
+// full-width space (U+3000) show up often in Japanese bibliographic data
+// (e.g. "ＯＮＥ　ＰＩＥＣＥ"). Normalizing to half-width keeps titles/volume
+// labels closer to their official printed form and makes the volume-number
+// regexes below work regardless of which width the source used.
+export function toHalfWidth(str: string): string {
+  return str
+    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/　/g, ' ')
 }
 
-// Handles plain kanji numerals used for volume labels, e.g. NDL's "巻一"/"巻十一",
-// as well as full-width digits (NDL also reports volumes like "３").
+// Handles plain kanji numerals used for volume labels, e.g. NDL's "巻一"/"巻十一".
 // Not a full Japanese numeral parser, but covers the 1-999 range real volume
 // numbers fall in.
 export function kanjiToNumber(raw: string): number | null {
-  const str = toHalfWidthDigits(raw.trim())
+  const str = toHalfWidth(raw.trim())
   if (/^\d+$/.test(str)) return parseInt(str, 10)
   if (!/^[〇一二三四五六七八九十百千]+$/.test(str)) return null
   let result = 0
@@ -65,6 +71,19 @@ export function extractVolumeNumberFromLabel(label: string): number | null {
   return kanjiToNumber(stripped)
 }
 
+// Some sources append a subtitle in trailing parentheses, e.g.
+// "One piece 巻2 (Versus!!バギー海賊団)". That breaks every volume-marker
+// pattern below (they all anchor to the end of the string), so strip it
+// first - but only when the parenthesized text isn't itself a bare volume
+// number like "鬼滅の刃(1)", which the patterns already handle correctly.
+function stripTrailingSubtitle(title: string): string {
+  const match = title.match(/^(.*?)\s*[\(（]([^()（）]*)[\)）]\s*$/)
+  if (!match) return title
+  const inner = toHalfWidth(match[2]).trim()
+  if (/^\d+$/.test(inner)) return title
+  return match[1].trim()
+}
+
 // ISBNs don't encode a volume number in any standard, decodable way, so the
 // best signal available is the volume marker embedded in the book title
 // returned by the lookup APIs. Real-world examples seen from openBD/Google:
@@ -78,10 +97,11 @@ const VOLUME_PATTERNS: RegExp[] = [
   /^(.*?)[\s　]+(\d{1,4})\s*$/,
 ]
 
-export function parseVolumeFromTitle(title: string): ParsedTitle {
-  const trimmed = title.trim()
+export function parseVolumeFromTitle(rawTitle: string): ParsedTitle {
+  const normalized = toHalfWidth(rawTitle.trim())
+  const withoutSubtitle = stripTrailingSubtitle(normalized)
   for (const pattern of VOLUME_PATTERNS) {
-    const match = trimmed.match(pattern)
+    const match = withoutSubtitle.match(pattern)
     if (!match) continue
     const seriesName = cleanSeriesName(match[1])
     const volumeNumber = Number(match[2])
@@ -89,5 +109,5 @@ export function parseVolumeFromTitle(title: string): ParsedTitle {
       return { seriesName, volumeNumber }
     }
   }
-  return { seriesName: trimmed, volumeNumber: null }
+  return { seriesName: cleanSeriesName(withoutSubtitle), volumeNumber: null }
 }

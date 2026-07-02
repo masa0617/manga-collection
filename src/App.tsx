@@ -18,6 +18,21 @@ import type { Series, Volume, BackupMeta } from './types'
 
 type View = 'home' | 'detail' | 'add'
 
+interface HistoryState {
+  view: View
+  seriesId: string | null
+}
+
+function readHistoryState(state: unknown): HistoryState {
+  if (state && typeof state === 'object' && 'view' in state) {
+    const s = state as Partial<HistoryState>
+    if (s.view === 'detail' || s.view === 'add' || s.view === 'home') {
+      return { view: s.view, seriesId: s.seriesId ?? null }
+    }
+  }
+  return { view: 'home', seriesId: null }
+}
+
 export default function App() {
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [volumes, setVolumes] = useState<Volume[]>([])
@@ -39,6 +54,32 @@ export default function App() {
   useEffect(() => {
     refresh()
   }, [])
+
+  // Push a real history entry per screen so the browser's own back gesture
+  // (iOS Safari's edge swipe, Android back button, desktop back button) can
+  // navigate the app instead of only our in-app "戻る" buttons.
+  useEffect(() => {
+    if (!window.history.state) {
+      window.history.replaceState({ view: 'home', seriesId: null } satisfies HistoryState, '')
+    }
+    function onPopState(e: PopStateEvent) {
+      const state = readHistoryState(e.state)
+      setView(state.view)
+      setSelectedSeriesId(state.seriesId)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  function navigate(nextView: View, seriesId: string | null) {
+    window.history.pushState({ view: nextView, seriesId } satisfies HistoryState, '')
+    setView(nextView)
+    setSelectedSeriesId(seriesId)
+  }
+
+  function goBack() {
+    window.history.back()
+  }
 
   const volumesBySeriesId = useMemo(() => {
     const map: Record<string, Volume[]> = {}
@@ -65,9 +106,8 @@ export default function App() {
 
   async function handleDeleteSeries(seriesId: string) {
     await deleteSeries(seriesId)
-    if (selectedSeriesId === seriesId) {
-      setSelectedSeriesId(null)
-      setView('home')
+    if (view === 'detail' && selectedSeriesId === seriesId) {
+      goBack()
     }
     await refresh()
   }
@@ -94,15 +134,9 @@ export default function App() {
           onToggleViewMode={() => setHomeViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}
           sortMode={sortMode}
           onToggleSortMode={() => setSortMode((m) => (m === 'kana' ? 'recent' : 'kana'))}
-          onSelectSeries={(id) => {
-            setSelectedSeriesId(id)
-            setView('detail')
-          }}
+          onSelectSeries={(id) => navigate('detail', id)}
           onDeleteSeries={handleDeleteSeries}
-          onAdd={() => {
-            setSelectedSeriesId(null)
-            setView('add')
-          }}
+          onAdd={() => navigate('add', null)}
         />
       )}
 
@@ -110,8 +144,8 @@ export default function App() {
         <SeriesDetailScreen
           series={selectedSeries}
           volumes={volumesBySeriesId[selectedSeries.id] ?? []}
-          onBack={() => setView('home')}
-          onAddVolume={() => setView('add')}
+          onBack={goBack}
+          onAddVolume={() => navigate('add', selectedSeries.id)}
           onDeleteVolume={handleDeleteVolume}
           onUpdateCover={handleUpdateCover}
         />
@@ -121,10 +155,10 @@ export default function App() {
         <AddScreen
           prefillSeriesName={selectedSeries?.name}
           prefillAuthor={selectedSeries?.author}
-          onCancel={() => setView(selectedSeries ? 'detail' : 'home')}
+          onCancel={goBack}
           onSaved={async () => {
             await refresh()
-            setView(selectedSeries ? 'detail' : 'home')
+            goBack()
           }}
         />
       )}

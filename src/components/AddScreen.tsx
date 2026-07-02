@@ -84,7 +84,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     e.preventDefault()
     const num = Number(volumeNumber)
     if (!seriesName.trim() || !num || num <= 0) {
-      setMessage('シリーズ名と巻数を正しく入力してください。')
+      setMessage('タイトルと巻数を正しく入力してください。')
       return
     }
     setSaving(true)
@@ -172,7 +172,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
           {looking && mode === 'scan' && <p className="muted">書誌情報を取得中…</p>}
 
           <div className="field-row">
-            <label>シリーズ名</label>
+            <label>タイトル</label>
             <input
               value={seriesName}
               onChange={(e) => setSeriesName(e.target.value)}

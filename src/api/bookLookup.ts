@@ -1,5 +1,5 @@
 import type { BookInfo } from '../types'
-import { extractVolumeNumberFromLabel } from '../utils/titleParsing'
+import { extractVolumeNumberFromLabel, parseVolumeFromTitle, toHalfWidth } from '../utils/titleParsing'
 import { parsePublishDate } from '../utils/publishDate'
 
 // Shorter timeout than a "give the network every benefit of the doubt"
@@ -36,7 +36,7 @@ async function lookupOpenBD(isbn: string): Promise<BookInfo | null> {
   if (!record) return null
   const summary = record.summary ?? {}
   const info: BookInfo = {
-    title: summary.title || undefined,
+    title: summary.title ? toHalfWidth(summary.title) : undefined,
     author: summary.author || undefined,
     publisher: summary.publisher || undefined,
     coverImageUrl: toHttps(summary.cover || undefined),
@@ -61,7 +61,8 @@ async function lookupNdl(isbn: string): Promise<BookInfo | null> {
   if (doc.querySelector('parsererror')) return null
   const item = doc.querySelector('item')
   if (!item) return null
-  const title = item.getElementsByTagName('dc:title')[0]?.textContent?.trim() || undefined
+  const rawTitle = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
+  const title = rawTitle ? toHalfWidth(rawTitle) : undefined
   const author = item.getElementsByTagName('dc:creator')[0]?.textContent?.trim() || undefined
   const publisher = item.getElementsByTagName('dc:publisher')[0]?.textContent?.trim() || undefined
   const magazine = item.getElementsByTagName('dcndl:seriesTitle')[0]?.textContent?.trim() || undefined
@@ -88,7 +89,7 @@ async function lookupGoogleBooks(isbn: string): Promise<BookInfo | null> {
   if (!item) return null
   const v = item.volumeInfo ?? {}
   const info: BookInfo = {
-    title: v.title || undefined,
+    title: v.title ? toHalfWidth(v.title) : undefined,
     author: Array.isArray(v.authors) ? v.authors.join('、') : undefined,
     publisher: v.publisher || undefined,
     coverImageUrl: toHttps(v.imageLinks?.thumbnail || v.imageLinks?.smallThumbnail || undefined),
@@ -105,15 +106,25 @@ export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {
     lookupGoogleBooks(cleaned),
   ])
   if (!openBd && !ndl && !google) return null
+  // NDL's title, when present, is already clean (its volume number lives in
+  // a separate field) so it won't carry a parseable marker - but that
+  // doesn't mean no source had one. Fall back to whichever raw title
+  // (openBD's/Google's) does encode one before giving up.
+  const volumeNumber =
+    ndl?.volumeNumber ??
+    parseVolumeFromTitle(openBd?.title ?? '').volumeNumber ??
+    parseVolumeFromTitle(google?.title ?? '').volumeNumber ??
+    undefined
   return {
-    title: openBd?.title || ndl?.title || google?.title,
+    // NDL tends to preserve the officially printed stylization (e.g. "ONE
+    // PIECE") more faithfully than openBD, which sometimes normalizes case
+    // (e.g. "One piece") - prefer it for the title specifically.
+    title: ndl?.title || openBd?.title || google?.title,
     author: openBd?.author || ndl?.author || google?.author,
     publisher: openBd?.publisher || ndl?.publisher || google?.publisher,
     coverImageUrl: openBd?.coverImageUrl || google?.coverImageUrl,
     magazine: openBd?.magazine || ndl?.magazine,
     releaseDateISO: openBd?.releaseDateISO || google?.releaseDateISO,
-    // NDL reports volume as a separate structured field, more reliable than
-    // parsing it back out of a combined title string.
-    volumeNumber: ndl?.volumeNumber,
+    volumeNumber,
   }
 }

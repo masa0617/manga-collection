@@ -53,13 +53,17 @@ export default function CoverPicker({ onPick }: Props) {
       <div className="cover-picker__url-row">
         <input
           type="url"
-          placeholder="画像のURLを貼り付け"
+          placeholder="画像のURLを貼り付けてEnter"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleUrlSubmit()
+            }
+          }}
+          onBlur={handleUrlSubmit}
         />
-        <button type="button" className="button button--ghost" onClick={handleUrlSubmit}>
-          設定
-        </button>
       </div>
       <button className="link-button" onClick={() => setOpen(false)}>
         キャンセル
