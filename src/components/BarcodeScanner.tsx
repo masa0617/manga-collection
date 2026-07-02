@@ -9,8 +9,17 @@ interface Props {
 export default function BarcodeScanner({ onDetected }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
+  const onDetectedRef = useRef(onDetected)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    onDetectedRef.current = onDetected
+  }, [onDetected])
+
+  // Intentionally runs only once per mount: re-running this on every parent
+  // re-render (e.g. AddScreen loading its series list) previously caused two
+  // overlapping getUserMedia streams to race for the same <video> element,
+  // leaving the preview black until the component was unmounted/remounted.
   useEffect(() => {
     const hints = new Map()
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13])
@@ -22,7 +31,7 @@ export default function BarcodeScanner({ onDetected }: Props) {
         if (cancelled || !result) return
         const text = result.getText()
         if (/^\d{13}$/.test(text) && (text.startsWith('978') || text.startsWith('979'))) {
-          onDetected(text)
+          onDetectedRef.current(text)
         }
       })
       .then((controls) => {
@@ -40,12 +49,14 @@ export default function BarcodeScanner({ onDetected }: Props) {
     return () => {
       cancelled = true
       controlsRef.current?.stop()
+      controlsRef.current = null
     }
-  }, [onDetected])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="scanner">
-      <video ref={videoRef} className="scanner__video" muted playsInline />
+      <video ref={videoRef} className="scanner__video" autoPlay muted playsInline />
       <div className="scanner__frame" />
       {error && <p className="scanner__error">{error}</p>}
       <p className="scanner__hint">ISBNバーコードを枠内に合わせてください</p>

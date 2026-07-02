@@ -26,4 +26,8 @@ export interface BookInfo {
   author?: string
   publisher?: string
   coverImageUrl?: string
+  // Structured volume number from a source that reports it separately from
+  // the title (e.g. NDL Search's dcndl:volume), more reliable than parsing it
+  // back out of a combined title string.
+  volumeNumber?: number
 }

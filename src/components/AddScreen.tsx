@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import BarcodeScanner from './BarcodeScanner'
 import { lookupBookByIsbn } from '../api/bookLookup'
+import { parseVolumeFromTitle } from '../utils/titleParsing'
 import { findSeriesByName, saveSeries, saveVolume, recordVolumeAdded, getAllSeries } from '../db'
 import type { Series } from '../types'
 
@@ -36,7 +37,12 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     const info = await lookupBookByIsbn(detectedIsbn)
     setLooking(false)
     if (info) {
-      if (info.title) setSeriesName(info.title)
+      if (info.title) {
+        const parsed = parseVolumeFromTitle(info.title)
+        setSeriesName(parsed.seriesName)
+        const vol = info.volumeNumber ?? parsed.volumeNumber
+        if (vol !== null && vol !== undefined) setVolumeNumber(String(vol))
+      }
       if (info.author) setAuthor(info.author)
       if (info.publisher) setPublisher(info.publisher)
       if (info.coverImageUrl) setCoverImageUrl(info.coverImageUrl)
@@ -51,7 +57,14 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     const info = await lookupBookByIsbn(isbn)
     setLooking(false)
     if (info) {
-      if (info.title) setSeriesName((prev) => prev || info.title || '')
+      if (info.title) {
+        const parsed = parseVolumeFromTitle(info.title)
+        setSeriesName((prev) => prev || parsed.seriesName)
+        const vol = info.volumeNumber ?? parsed.volumeNumber
+        if (vol !== null && vol !== undefined) {
+          setVolumeNumber((prev) => prev || String(vol))
+        }
+      }
       if (info.author) setAuthor((prev) => prev || info.author || '')
       if (info.publisher) setPublisher(info.publisher)
       if (info.coverImageUrl) setCoverImageUrl(info.coverImageUrl)
@@ -175,8 +188,8 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
           {message && <p className="form-message">{message}</p>}
 
           <div className="form-actions">
-            <button type="submit" className="button button--primary" disabled={saving}>
-              {saving ? '保存中…' : '登録する'}
+            <button type="submit" className="button button--primary" disabled={saving || looking}>
+              {saving ? '保存中…' : looking ? '書誌情報取得中…' : '登録する'}
             </button>
             {mode === 'scan' && showForm && (
               <button
