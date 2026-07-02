@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Series, Volume, BackupMeta } from './types'
+import { normalizeForMatch } from './utils/titleParsing'
 
 interface MangaDB extends DBSchema {
   series: {
@@ -54,8 +55,8 @@ export async function getSeriesById(id: string): Promise<Series | undefined> {
 
 export async function findSeriesByName(name: string): Promise<Series | undefined> {
   const all = await getAllSeries()
-  const normalized = name.trim().toLowerCase()
-  return all.find((s) => s.name.trim().toLowerCase() === normalized)
+  const normalized = normalizeForMatch(name)
+  return all.find((s) => normalizeForMatch(s.name) === normalized)
 }
 
 export async function saveSeries(series: Series): Promise<void> {

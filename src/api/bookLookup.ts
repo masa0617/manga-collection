@@ -1,5 +1,10 @@
 import type { BookInfo } from '../types'
-import { extractVolumeNumberFromLabel, parseVolumeFromTitle, toHalfWidth } from '../utils/titleParsing'
+import {
+  extractVolumeNumberFromLabel,
+  formatCatalogAuthors,
+  parseVolumeFromTitle,
+  toHalfWidth,
+} from '../utils/titleParsing'
 import { parsePublishDate } from '../utils/publishDate'
 
 // Shorter timeout than a "give the network every benefit of the doubt"
@@ -37,7 +42,7 @@ async function lookupOpenBD(isbn: string): Promise<BookInfo | null> {
   const summary = record.summary ?? {}
   const info: BookInfo = {
     title: summary.title ? toHalfWidth(summary.title) : undefined,
-    author: summary.author || undefined,
+    author: summary.author ? formatCatalogAuthors([summary.author]) || undefined : undefined,
     publisher: summary.publisher || undefined,
     coverImageUrl: toHttps(summary.cover || undefined),
     // openBD's "series" field is the book's imprint/label (e.g. "ジャンプ・
@@ -63,7 +68,10 @@ async function lookupNdl(isbn: string): Promise<BookInfo | null> {
   if (!item) return null
   const rawTitle = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
   const title = rawTitle ? toHalfWidth(rawTitle) : undefined
-  const author = item.getElementsByTagName('dc:creator')[0]?.textContent?.trim() || undefined
+  const creatorValues = Array.from(item.getElementsByTagName('dc:creator'))
+    .map((el) => el.textContent?.trim())
+    .filter((v): v is string => Boolean(v))
+  const author = creatorValues.length ? formatCatalogAuthors(creatorValues) || undefined : undefined
   const publisher = item.getElementsByTagName('dc:publisher')[0]?.textContent?.trim() || undefined
   const magazine = item.getElementsByTagName('dcndl:seriesTitle')[0]?.textContent?.trim() || undefined
   const volumeLabel = item.getElementsByTagName('dcndl:volume')[0]?.textContent?.trim()

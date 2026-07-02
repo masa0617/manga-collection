@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import BarcodeScanner from './BarcodeScanner'
 import { lookupBookByIsbn } from '../api/bookLookup'
-import { parseVolumeFromTitle } from '../utils/titleParsing'
+import { normalizeForMatch, parseVolumeFromTitle } from '../utils/titleParsing'
 import { findSeriesByName, saveSeries, saveVolume, recordVolumeAdded, getAllSeries } from '../db'
 import type { Series } from '../types'
 
@@ -32,6 +32,16 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     getAllSeries().then(setSeriesList)
   }, [])
 
+  // Once a series' title has been saved (whether auto-fetched or manually
+  // corrected by the user), treat that as the "known correct" spelling and
+  // prefer it over whatever a fresh lookup parses out for later volumes of
+  // the same series - this is what makes a one-time correction (e.g. fixing
+  // "One piece" to "ONE PIECE") stick for every volume scanned afterward.
+  function resolveKnownSeriesName(candidate: string): string {
+    const match = seriesList.find((s) => normalizeForMatch(s.name) === normalizeForMatch(candidate))
+    return match?.name ?? candidate
+  }
+
   async function handleDetected(detectedIsbn: string) {
     setIsbn(detectedIsbn)
     setLooking(true)
@@ -41,7 +51,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     if (info) {
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(parsed.seriesName)
+        setSeriesName(resolveKnownSeriesName(parsed.seriesName))
         const vol = info.volumeNumber ?? parsed.volumeNumber
         if (vol !== null && vol !== undefined) setVolumeNumber(String(vol))
       }
@@ -63,7 +73,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     if (info) {
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName((prev) => prev || parsed.seriesName)
+        setSeriesName((prev) => prev || resolveKnownSeriesName(parsed.seriesName))
         const vol = info.volumeNumber ?? parsed.volumeNumber
         if (vol !== null && vol !== undefined) {
           setVolumeNumber((prev) => prev || String(vol))

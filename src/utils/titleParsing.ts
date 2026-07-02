@@ -71,6 +71,20 @@ export function extractVolumeNumberFromLabel(label: string): number | null {
   return kanjiToNumber(stripped)
 }
 
+// NDL sometimes reports a parallel title joining the original spelling and a
+// Japanese reading with "=", e.g. "One piece = ワンピース". Keep only the
+// part before it.
+function stripParallelTitle(title: string): string {
+  const idx = title.indexOf('=')
+  return idx === -1 ? title : title.slice(0, idx).trim()
+}
+
+// Normalizes a title/series name for equality comparisons (matching a fresh
+// scan against an already-registered series), not for display.
+export function normalizeForMatch(name: string): string {
+  return toHalfWidth(name).trim().toLowerCase().replace(/\s+/g, '')
+}
+
 // Some sources append a subtitle in trailing parentheses, e.g.
 // "One piece 巻2 (Versus!!バギー海賊団)". That breaks every volume-marker
 // pattern below (they all anchor to the end of the string), so strip it
@@ -82,6 +96,29 @@ function stripTrailingSubtitle(title: string): string {
   const inner = toHalfWidth(match[2]).trim()
   if (/^\d+$/.test(inner)) return title
   return match[1].trim()
+}
+
+// Both NDL's dc:creator and openBD's summary.author use catalog-style
+// "姓,名,生年-没年" entries, e.g. "尾田,栄一郎,1975-" or "尾田/栄一郎" (the
+// surname/given-name separator varies). Strip the birth/death year
+// fragment, then join the remaining name parts with no separator: "尾田栄一郎".
+function formatCatalogPersonName(raw: string): string {
+  const withoutDates = raw.trim().replace(/[,，]?\s*\d{3,4}\s*-\s*\d{0,4}\s*\.?\s*$/, '')
+  return withoutDates
+    .split(/[,，/]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('')
+}
+
+// A record can have multiple contributors (original story / art), reported
+// either as separate fields or joined with "; " in one.
+export function formatCatalogAuthors(rawValues: string[]): string {
+  return rawValues
+    .flatMap((v) => v.split(/;|；/))
+    .map((part) => formatCatalogPersonName(part))
+    .filter(Boolean)
+    .join('、')
 }
 
 // ISBNs don't encode a volume number in any standard, decodable way, so the
@@ -98,7 +135,7 @@ const VOLUME_PATTERNS: RegExp[] = [
 ]
 
 export function parseVolumeFromTitle(rawTitle: string): ParsedTitle {
-  const normalized = toHalfWidth(rawTitle.trim())
+  const normalized = stripParallelTitle(toHalfWidth(rawTitle.trim()))
   const withoutSubtitle = stripTrailingSubtitle(normalized)
   for (const pattern of VOLUME_PATTERNS) {
     const match = withoutSubtitle.match(pattern)
