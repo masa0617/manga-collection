@@ -4,17 +4,28 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 
 interface Props {
   onDetected: (isbn: string) => void
+  onRequestOcr?: () => void
 }
 
-export default function BarcodeScanner({ onDetected }: Props) {
+const OCR_SUGGESTION_DELAY_MS = 6000
+
+export default function BarcodeScanner({ onDetected, onRequestOcr }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const onDetectedRef = useRef(onDetected)
   const [error, setError] = useState<string | null>(null)
+  const [showOcrSuggestion, setShowOcrSuggestion] = useState(false)
 
   useEffect(() => {
     onDetectedRef.current = onDetected
   }, [onDetected])
+
+  // Nudge toward the OCR fallback if nothing has been detected in a few
+  // seconds - runs once per mount, independent of the decode effect below.
+  useEffect(() => {
+    const timer = setTimeout(() => setShowOcrSuggestion(true), OCR_SUGGESTION_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Intentionally runs only once per mount: re-running this on every parent
   // re-render (e.g. AddScreen loading its series list) previously caused two
@@ -31,6 +42,7 @@ export default function BarcodeScanner({ onDetected }: Props) {
         if (cancelled || !result) return
         const text = result.getText()
         if (/^\d{13}$/.test(text) && (text.startsWith('978') || text.startsWith('979'))) {
+          setShowOcrSuggestion(false)
           onDetectedRef.current(text)
         }
       })
@@ -60,6 +72,11 @@ export default function BarcodeScanner({ onDetected }: Props) {
       <div className="scanner__frame" />
       {error && <p className="scanner__error">{error}</p>}
       <p className="scanner__hint">ISBNバーコードを枠内に合わせてください</p>
+      {showOcrSuggestion && !error && onRequestOcr && (
+        <button type="button" className="scanner__suggestion" onClick={onRequestOcr}>
+          うまく読み取れない場合は数字を読み取る →
+        </button>
+      )}
     </div>
   )
 }

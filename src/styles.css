@@ -445,6 +445,31 @@ body {
   color: #fff;
 }
 
+/* Scan method toggle */
+.scan-method-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  flex: 1;
+  padding: 8px;
+  border-radius: 20px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
 /* Scanner */
 .scanner {
   position: relative;
@@ -494,6 +519,38 @@ body {
   padding: 8px;
   border-radius: 6px;
   font-size: 0.8rem;
+}
+
+.scanner__frame--wide {
+  top: 40%;
+  bottom: 40%;
+  left: 6%;
+  right: 6%;
+}
+
+.scanner__suggestion {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.ocr-controls {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: #111;
+}
+
+.ocr-controls .button {
+  flex: 1;
 }
 
 /* Form */

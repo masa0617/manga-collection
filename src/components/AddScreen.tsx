@@ -1,9 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import BarcodeScanner from './BarcodeScanner'
 import { lookupBookByIsbn } from '../api/bookLookup'
 import { normalizeForMatch, parseVolumeFromTitle } from '../utils/titleParsing'
 import { findSeriesByName, saveSeries, saveVolume, recordVolumeAdded, getAllSeries } from '../db'
 import type { Series } from '../types'
+
+// Tesseract.js is sizeable, so it's only fetched when the OCR fallback is
+// actually selected instead of bloating the initial barcode-scan bundle.
+const IsbnOcrScanner = lazy(() => import('./IsbnOcrScanner'))
 
 interface Props {
   onSaved: () => void
@@ -14,6 +18,7 @@ interface Props {
 
 export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefillAuthor }: Props) {
   const [mode, setMode] = useState<'scan' | 'manual'>('scan')
+  const [scanMethod, setScanMethod] = useState<'barcode' | 'ocr'>('barcode')
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [seriesName, setSeriesName] = useState(prefillSeriesName ?? '')
   const [author, setAuthor] = useState(prefillAuthor ?? '')
@@ -161,7 +166,33 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
         </button>
       </div>
 
-      {mode === 'scan' && !showForm && <BarcodeScanner onDetected={handleDetected} />}
+      {mode === 'scan' && !showForm && (
+        <>
+          <div className="scan-method-toggle">
+            <button
+              type="button"
+              className={scanMethod === 'barcode' ? 'chip chip--active' : 'chip'}
+              onClick={() => setScanMethod('barcode')}
+            >
+              バーコード
+            </button>
+            <button
+              type="button"
+              className={scanMethod === 'ocr' ? 'chip chip--active' : 'chip'}
+              onClick={() => setScanMethod('ocr')}
+            >
+              数字を読み取る
+            </button>
+          </div>
+          {scanMethod === 'barcode' ? (
+            <BarcodeScanner onDetected={handleDetected} onRequestOcr={() => setScanMethod('ocr')} />
+          ) : (
+            <Suspense fallback={<p className="muted">読み込み中…</p>}>
+              <IsbnOcrScanner onDetected={handleDetected} onCancel={() => setScanMethod('barcode')} />
+            </Suspense>
+          )}
+        </>
+      )}
 
       {(showForm || mode === 'manual') && (
         <form className="add-form" onSubmit={handleSubmit}>
