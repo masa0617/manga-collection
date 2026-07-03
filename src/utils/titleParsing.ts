@@ -3,7 +3,7 @@ export interface ParsedTitle {
   volumeNumber: number | null
 }
 
-const TRAILING_SEPARATORS = /[\s　\-‐-‒–—―ー:：・]+$/
+const TRAILING_SEPARATORS = /[\s　\-‐-‒–—―ー:：・.。]+$/
 
 function cleanSeriesName(raw: string): string {
   return raw.replace(TRAILING_SEPARATORS, '').trim()

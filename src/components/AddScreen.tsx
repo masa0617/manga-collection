@@ -71,19 +71,22 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     const info = await lookupBookByIsbn(isbn)
     setLooking(false)
     if (info) {
+      // Always overwrite with the fresh result (matching the scan flow):
+      // keeping a stale value from a previous lookup in the same session -
+      // e.g. leaving the volume number from an earlier ISBN in place - is
+      // worse than clobbering a manually-typed value the user is actively
+      // about to replace by looking the ISBN up anyway.
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName((prev) => prev || resolveKnownSeriesName(parsed.seriesName))
+        setSeriesName(resolveKnownSeriesName(parsed.seriesName))
         const vol = info.volumeNumber ?? parsed.volumeNumber
-        if (vol !== null && vol !== undefined) {
-          setVolumeNumber((prev) => prev || String(vol))
-        }
+        setVolumeNumber(vol !== null && vol !== undefined ? String(vol) : '')
       }
-      if (info.author) setAuthor((prev) => prev || info.author || '')
-      if (info.publisher) setPublisher(info.publisher)
-      if (info.magazine) setMagazine(info.magazine)
-      if (info.releaseDateISO) setReleaseDateISO(info.releaseDateISO)
-      if (info.coverImageUrl) setCoverImageUrl(info.coverImageUrl)
+      setAuthor(info.author ?? '')
+      setPublisher(info.publisher ?? '')
+      setMagazine(info.magazine ?? '')
+      setReleaseDateISO(info.releaseDateISO)
+      setCoverImageUrl(info.coverImageUrl ?? '')
       setMessage(null)
     } else {
       setMessage('書誌情報が見つかりませんでした。')
