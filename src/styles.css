@@ -521,6 +521,13 @@ body {
   font-size: 0.8rem;
 }
 
+.scanner__hint-static {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 .scanner__frame--wide {
   top: 40%;
   bottom: 40%;
@@ -547,6 +554,9 @@ body {
   gap: 8px;
   padding: 10px;
   background: #111;
+  border-radius: 10px;
+  margin-top: 10px;
+  margin-bottom: 14px;
 }
 
 .ocr-controls .button {
