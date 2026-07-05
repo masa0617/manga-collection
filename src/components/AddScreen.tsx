@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import BarcodeScanner from './BarcodeScanner'
-import { lookupBookByIsbn } from '../api/bookLookup'
+import { estimateSeriesVolumes, lookupBookByIsbn } from '../api/bookLookup'
 import { normalizeForMatch, parseVolumeFromTitle } from '../utils/titleParsing'
-import { findSeriesByName, saveSeries, saveVolume, recordVolumeAdded, getAllSeries } from '../db'
+import { isLikelySameSeries } from '../utils/seriesMatching'
+import { findSeriesByName, saveSeries, saveVolume, recordVolumeAdded, getAllSeries, getAllVolumes } from '../db'
 import type { Series } from '../types'
 
 // Tesseract.js is sizeable, so it's only fetched when the OCR fallback is
@@ -20,6 +21,10 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   const [mode, setMode] = useState<'scan' | 'manual'>('scan')
   const [scanMethod, setScanMethod] = useState<'barcode' | 'ocr'>('barcode')
   const [seriesList, setSeriesList] = useState<Series[]>([])
+  // One sample ISBN per series, used only as corroborating evidence for
+  // fuzzy title matches (see isLikelySameSeries) - not exhaustive, first one
+  // found per series is enough.
+  const [seriesSampleIsbn, setSeriesSampleIsbn] = useState<Record<string, string>>({})
   const [seriesName, setSeriesName] = useState(prefillSeriesName ?? '')
   const [author, setAuthor] = useState(prefillAuthor ?? '')
   const [volumeNumber, setVolumeNumber] = useState('')
@@ -35,6 +40,13 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
 
   useEffect(() => {
     getAllSeries().then(setSeriesList)
+    getAllVolumes().then((volumes) => {
+      const samples: Record<string, string> = {}
+      for (const v of volumes) {
+        if (v.isbn && !samples[v.seriesId]) samples[v.seriesId] = v.isbn
+      }
+      setSeriesSampleIsbn(samples)
+    })
   }, [])
 
   // Once a series' title has been saved (whether auto-fetched or manually
@@ -42,8 +54,15 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   // prefer it over whatever a fresh lookup parses out for later volumes of
   // the same series - this is what makes a one-time correction (e.g. fixing
   // "One piece" to "ONE PIECE") stick for every volume scanned afterward.
-  function resolveKnownSeriesName(candidate: string): string {
-    const match = seriesList.find((s) => normalizeForMatch(s.name) === normalizeForMatch(candidate))
+  // Matching tolerates residual noise from title parsing (stray subtitle/
+  // ruby fragments) via isLikelySameSeries rather than requiring exact
+  // equality, since that noise is exactly what used to make the learned
+  // title silently not apply.
+  function resolveKnownSeriesName(candidate: string, candidateIsbn?: string): string {
+    const candidateNormalized = normalizeForMatch(candidate)
+    const match = seriesList.find((s) =>
+      isLikelySameSeries(candidateNormalized, normalizeForMatch(s.name), candidateIsbn, seriesSampleIsbn[s.id]),
+    )
     return match?.name ?? candidate
   }
 
@@ -56,7 +75,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     if (info) {
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(resolveKnownSeriesName(parsed.seriesName))
+        setSeriesName(resolveKnownSeriesName(parsed.seriesName, detectedIsbn))
         const vol = info.volumeNumber ?? parsed.volumeNumber
         if (vol !== null && vol !== undefined) setVolumeNumber(String(vol))
       }
@@ -83,7 +102,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       // about to replace by looking the ISBN up anyway.
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(resolveKnownSeriesName(parsed.seriesName))
+        setSeriesName(resolveKnownSeriesName(parsed.seriesName, isbn))
         const vol = info.volumeNumber ?? parsed.volumeNumber
         setVolumeNumber(vol !== null && vol !== undefined ? String(vol) : '')
       }
@@ -144,8 +163,33 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       createdAt: Date.now(),
     })
     await recordVolumeAdded()
+    // Best-effort, non-blocking: refreshes the auto-estimated total volume
+    // count/latest-release date in the background so registration isn't
+    // slowed down by an extra network round trip.
+    refreshEstimatedVolumes(series)
     setSaving(false)
     onSaved()
+  }
+
+  async function refreshEstimatedVolumes(series: Series) {
+    try {
+      const estimate = await estimateSeriesVolumes(series.name, series.author)
+      // Stamp lastVolumeCheckAt even without a usable estimate, so the
+      // background scheduler (see volumeCheckScheduler) doesn't immediately
+      // redo the same lookup this add just performed.
+      await saveSeries({
+        ...series,
+        lastVolumeCheckAt: Date.now(),
+        ...(estimate
+          ? {
+              estimatedTotalVolumeCount: estimate.totalVolumeCount,
+              estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
+            }
+          : {}),
+      })
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   return (

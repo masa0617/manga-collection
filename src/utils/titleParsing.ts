@@ -85,17 +85,39 @@ export function normalizeForMatch(name: string): string {
   return toHalfWidth(name).trim().toLowerCase().replace(/\s+/g, '')
 }
 
-// Some sources append a subtitle in trailing parentheses, e.g.
-// "One piece 巻2 (Versus!!バギー海賊団)". That breaks every volume-marker
-// pattern below (they all anchor to the end of the string), so strip it
-// first - but only when the parenthesized text isn't itself a bare volume
-// number like "鬼滅の刃(1)", which the patterns already handle correctly.
-function stripTrailingSubtitle(title: string): string {
-  const match = title.match(/^(.*?)\s*[\(（]([^()（）]*)[\)）]\s*$/)
+// Bibliographic records commonly separate a subtitle with " : " (ISBD
+// convention), e.g. "鬼滅の刃 : ヒノカミ血風譚 1". Split it off before running
+// the volume-marker patterns below (they all anchor to the end of the
+// string) - but only when the colon isn't glued to an ASCII/alphanumeric
+// token, since that's a stylized part of the title itself (e.g.
+// "Re:ゼロから始める異世界生活"), not a subtitle separator.
+function stripColonSubtitle(title: string): string {
+  const match = title.match(/^(.*?)[ 　]*[:：][ 　]*(.+)$/)
   if (!match) return title
-  const inner = toHalfWidth(match[2]).trim()
-  if (/^\d+$/.test(inner)) return title
-  return match[1].trim()
+  const before = match[1]
+  const after = match[2]
+  if (!before) return title
+  if (/[A-Za-z0-9]/.test(before[before.length - 1])) return title
+  // A volume number sometimes trails the subtitle instead of the main title
+  // (e.g. "鬼滅の刃 : ヒノカミ血風譚 1") - keep it so the volume-marker
+  // patterns below can still find it after the subtitle itself is dropped.
+  const trailingVolume = after.match(/(第\s*\d{1,4}\s*巻|\d{1,4})\s*$/)
+  return trailingVolume ? `${before.trim()} ${trailingVolume[1]}` : before.trim()
+}
+
+// Some sources wrap a subtitle or furigana reading in parentheses anywhere
+// in the title, e.g. "One piece 巻2 (Versus!!バギー海賊団)" or
+// "鬼滅の刃(きめつのやいば) 1". Strip any such parenthetical - but only when
+// its contents aren't a bare volume number like "鬼滅の刃(1)", which the
+// volume-marker patterns below already handle correctly.
+function stripNonNumericParens(title: string): string {
+  return title
+    .replace(/[\(（]([^()（）]*)[\)）]/g, (whole, inner) => {
+      const halfInner = toHalfWidth(inner).trim()
+      return /^\d+$/.test(halfInner) ? whole : ' '
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 // Both NDL's dc:creator and openBD's summary.author use catalog-style
@@ -136,7 +158,7 @@ const VOLUME_PATTERNS: RegExp[] = [
 
 export function parseVolumeFromTitle(rawTitle: string): ParsedTitle {
   const normalized = stripParallelTitle(toHalfWidth(rawTitle.trim()))
-  const withoutSubtitle = stripTrailingSubtitle(normalized)
+  const withoutSubtitle = stripNonNumericParens(stripColonSubtitle(normalized))
   for (const pattern of VOLUME_PATTERNS) {
     const match = withoutSubtitle.match(pattern)
     if (!match) continue

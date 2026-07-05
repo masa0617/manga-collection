@@ -25,3 +25,18 @@ export function isRecentRelease(dateISO: string | undefined, now: Date = new Dat
   const daysSince = (now.getTime() - released.getTime()) / (1000 * 60 * 60 * 24)
   return daysSince >= 0 && daysSince <= NEW_RELEASE_WINDOW_DAYS
 }
+
+// Whether a date is still ahead of now - used to tell an announced-but-not-
+// yet-published volume (a preorder listing) apart from one that's already out.
+export function isFutureRelease(dateISO: string | undefined, now: Date = new Date()): boolean {
+  if (!dateISO) return false
+  const released = new Date(dateISO)
+  if (Number.isNaN(released.getTime())) return false
+  return released.getTime() > now.getTime()
+}
+
+export function formatJapaneseDate(dateISO: string): string {
+  const [y, m, d] = dateISO.split('-').map(Number)
+  if (!y || !m || !d) return dateISO
+  return `${y}年${m}月${d}日`
+}

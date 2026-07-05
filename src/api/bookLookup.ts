@@ -106,6 +106,59 @@ async function lookupGoogleBooks(isbn: string): Promise<BookInfo | null> {
   return info.title || info.author || info.coverImageUrl ? info : null
 }
 
+export interface SeriesVolumeEstimate {
+  totalVolumeCount: number
+  // Release date associated with the highest-numbered volume found, whether
+  // or not the user owns it - lets callers tell "a newer volume exists" apart
+  // from "the volume I own happens to be new".
+  latestReleaseDateISO?: string
+}
+
+const MAX_PLAUSIBLE_VOLUME_NUMBER = 300
+
+// Best-effort total-volume-count estimate: searches NDL Search by title+
+// author (no API key required, unlike Google Books) and takes the highest
+// dcndl:volume number found across the results. Real NDL data is noisy -
+// fan books, anime tie-ins, arc-based re-editions - but plain numeric volume
+// labels reliably identify the actual volume sequence among that noise.
+// Deliberately not required to be exact: the caller always lets the user
+// override it manually.
+export async function estimateSeriesVolumes(seriesName: string, author?: string): Promise<SeriesVolumeEstimate | null> {
+  const params = new URLSearchParams({ title: seriesName, cnt: '100' })
+  if (author) params.set('creator', author)
+  const res = await fetchWithTimeout(`https://ndlsearch.ndl.go.jp/api/opensearch?${params.toString()}`, 6000)
+  if (!res) return null
+  const xmlText = await res.text().catch(() => null)
+  if (!xmlText) return null
+  const doc = new DOMParser().parseFromString(xmlText, 'text/xml')
+  if (doc.querySelector('parsererror')) return null
+
+  let maxVolume = 0
+  let latestReleaseDateISO: string | undefined
+  for (const item of Array.from(doc.querySelectorAll('item'))) {
+    const volumeLabel = item.getElementsByTagName('dcndl:volume')[0]?.textContent?.trim()
+    // A record for a volume that's only just been announced (preorder, not
+    // yet fully catalogued) commonly omits the structured dcndl:volume field
+    // entirely, even though the number is still embedded in the title itself
+    // (e.g. "妹は知っている（8）"). Skipping those records outright meant a
+    // series' newest volume - the one that actually matters for detecting a
+    // new release - could be invisible to this estimate for weeks after it
+    // was announced. Fall back to parsing the title so it's still counted.
+    const title = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
+    const num = volumeLabel
+      ? Number(volumeLabel.match(/^\[?(\d{1,3})\]?$/)?.[1])
+      : title
+        ? parseVolumeFromTitle(toHalfWidth(title)).volumeNumber
+        : null
+    if (!num || num <= 0 || num > MAX_PLAUSIBLE_VOLUME_NUMBER || num < maxVolume) continue
+    maxVolume = num
+    const issued = item.getElementsByTagName('dcterms:issued')[0]?.textContent?.trim()
+    const date = item.getElementsByTagName('dc:date')[0]?.textContent?.trim()
+    latestReleaseDateISO = parsePublishDate(issued || date)
+  }
+  return maxVolume > 0 ? { totalVolumeCount: maxVolume, latestReleaseDateISO } : null
+}
+
 export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {
   const cleaned = isbn.replace(/[^0-9Xx]/g, '')
   const [openBd, ndl, google] = await Promise.all([

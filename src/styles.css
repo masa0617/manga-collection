@@ -221,6 +221,38 @@ body {
   vertical-align: middle;
 }
 
+.upcoming-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: var(--color-surface);
+  color: var(--color-accent-dark);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.upcoming-badge--inline {
+  position: static;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+  font-size: 0.7rem;
+}
+
+.series-card__upcoming {
+  font-size: 0.68rem;
+  color: var(--color-accent-dark);
+  margin-top: -2px;
+}
+
+.upcoming-note {
+  color: var(--color-accent-dark);
+}
+
 .series-card__title {
   font-size: 0.78rem;
   line-height: 1.3;
@@ -228,6 +260,12 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.series-card__count {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
 }
 
 /* List view */
@@ -337,6 +375,24 @@ body {
 
 .detail-info__field--muted {
   color: var(--color-text-muted);
+}
+
+.total-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+
+.total-volume-input {
+  width: 70px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: inherit;
+  font-size: 0.85rem;
 }
 
 .cover-picker {

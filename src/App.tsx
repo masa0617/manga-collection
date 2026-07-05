@@ -14,7 +14,14 @@ import {
   exportAllData,
 } from './db'
 import { shouldPromptBackup, shareOrDownloadJson } from './utils/backup'
+import { runBackgroundVolumeCheck } from './utils/volumeCheckScheduler'
 import type { Series, Volume, BackupMeta } from './types'
+
+// While the app stays open, re-trigger a check cycle on this interval so a
+// long-lived session keeps working through the backlog instead of only
+// checking once at launch (each cycle itself only touches series overdue
+// for a recheck - see volumeCheckScheduler).
+const VOLUME_CHECK_RETRIGGER_MS = 10 * 60 * 1000
 
 type View = 'home' | 'detail' | 'add'
 
@@ -53,6 +60,23 @@ export default function App() {
 
   useEffect(() => {
     refresh()
+  }, [])
+
+  // Best-effort background refresh of new-release data: doesn't block the
+  // initial render (which always shows whatever was last saved locally), and
+  // a failed check simply leaves a series' data as-is rather than surfacing
+  // an error anywhere in the UI.
+  useEffect(() => {
+    function checkNow() {
+      runBackgroundVolumeCheck({
+        onSeriesUpdated: (updated) => {
+          setSeriesList((prev) => prev.map((s) => (s.id === updated.id ? updated : s)))
+        },
+      })
+    }
+    checkNow()
+    const interval = setInterval(checkNow, VOLUME_CHECK_RETRIGGER_MS)
+    return () => clearInterval(interval)
   }, [])
 
   // Push a real history entry per screen so the browser's own back gesture
@@ -118,6 +142,12 @@ export default function App() {
     await refresh()
   }
 
+  async function handleUpdateTotalVolumeCount(count: number | undefined) {
+    if (!selectedSeries) return
+    await saveSeries({ ...selectedSeries, manualTotalVolumeCount: count })
+    await refresh()
+  }
+
   if (loading) {
     return <div className="loading-screen">読み込み中…</div>
   }
@@ -148,6 +178,7 @@ export default function App() {
           onAddVolume={() => navigate('add', selectedSeries.id)}
           onDeleteVolume={handleDeleteVolume}
           onUpdateCover={handleUpdateCover}
+          onUpdateTotalVolumeCount={handleUpdateTotalVolumeCount}
         />
       )}
 

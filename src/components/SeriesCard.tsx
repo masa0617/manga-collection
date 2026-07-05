@@ -1,7 +1,8 @@
 import type { MouseEvent } from 'react'
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
-import { isRecentRelease } from '../utils/publishDate'
+import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
+import { formatJapaneseDate } from '../utils/publishDate'
 
 interface Props {
   series: Series
@@ -16,8 +17,9 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
   const hasMissing = getMissingVolumes(volumes.map((v) => v.volumeNumber)).length > 0
-  const latestVolume = sorted[sorted.length - 1]
-  const isNewRelease = latestVolume ? isRecentRelease(latestVolume.releaseDateISO) : false
+  const isNewRelease = hasRecentNewRelease(series, volumes)
+  const upcomingRelease = getUpcomingRelease(series, volumes)
+  const totalVolumeCount = series.manualTotalVolumeCount ?? series.estimatedTotalVolumeCount
 
   function handleDelete(e: MouseEvent) {
     e.stopPropagation()
@@ -30,6 +32,11 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
         <span className="series-row__name">
           {hasMissing && <span className="warn-mark">⚠️</span>}
           {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
+          {!isNewRelease && upcomingRelease && (
+            <span className="upcoming-badge upcoming-badge--inline">
+              {formatJapaneseDate(upcomingRelease.dateISO)}発売予定
+            </span>
+          )}
           {series.name}
         </span>
         <span className="series-row__actions">
@@ -38,7 +45,9 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
               ×
             </button>
           ) : (
-            <span className="series-row__count">{volumes.length}冊</span>
+            <span className="series-row__count">
+              {totalVolumeCount ? `全${totalVolumeCount}巻中${volumes.length}巻` : `${volumes.length}冊`}
+            </span>
           )}
         </span>
       </div>
@@ -61,8 +70,15 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
           )}
           {hasMissing && <span className="warn-badge">⚠️</span>}
           {isNewRelease && !editMode && <span className="new-badge">新刊</span>}
+          {!isNewRelease && upcomingRelease && !editMode && <span className="upcoming-badge">予約</span>}
         </div>
         <div className="series-card__title">{series.name}</div>
+        <div className="series-card__count">
+          {totalVolumeCount ? `全${totalVolumeCount}巻中${volumes.length}巻` : `${volumes.length}冊`}
+        </div>
+        {!isNewRelease && upcomingRelease && (
+          <div className="series-card__upcoming">{formatJapaneseDate(upcomingRelease.dateISO)}発売予定</div>
+        )}
       </button>
     </div>
   )

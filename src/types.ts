@@ -10,6 +10,25 @@ export interface Series {
   // Manual override for the representative cover, set from the series
   // detail screen. Takes priority over the auto-fetched minimum-volume cover.
   customCoverUrl?: string
+  // Best-effort total volume count estimated from NDL Search (max volume
+  // number seen across records matching this title+author), refreshed
+  // opportunistically whenever a volume is added. Overridden by
+  // manualTotalVolumeCount when the user sets one.
+  estimatedTotalVolumeCount?: number
+  // Release date (ISO) associated with the highest-numbered volume found
+  // during that same estimate, independent of what the user actually owns -
+  // used to tell "a newer volume than mine exists" apart from "my latest
+  // volume happens to be new".
+  estimatedLatestReleaseDateISO?: string
+  // Manual override for the total volume count, set from the series detail
+  // screen. Takes priority over estimatedTotalVolumeCount for display.
+  manualTotalVolumeCount?: number
+  // When the background volume-check scheduler last attempted (successfully
+  // or not) to refresh estimatedTotalVolumeCount/estimatedLatestReleaseDateISO
+  // for this series. Drives the check queue's "oldest first, at most every 6h"
+  // ordering - set on every attempt (even a failed one) so a series whose
+  // lookup keeps failing doesn't get hammered every app open.
+  lastVolumeCheckAt?: number
 }
 
 export interface Volume {
