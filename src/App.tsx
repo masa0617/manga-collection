@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import HomeScreen, { type SortMode } from './components/HomeScreen'
 import SeriesDetailScreen from './components/SeriesDetailScreen'
 import AddScreen from './components/AddScreen'
@@ -49,6 +49,11 @@ export default function App() {
   const [homeViewMode, setHomeViewMode] = useState<'grid' | 'list'>('grid')
   const [sortMode, setSortMode] = useState<SortMode>('kana')
   const [loading, setLoading] = useState(true)
+  // Scroll position the user was at on the home screen right before drilling
+  // into a series, so "戻る"/back-gesture can restore it - captured at the
+  // moment of navigating away (see navigate()) since the browser never
+  // auto-scrolls on its own for this single-page app.
+  const homeScrollRef = useRef(0)
 
   async function refresh() {
     const [s, v, meta] = await Promise.all([getAllSeries(), getAllVolumes(), getBackupMeta()])
@@ -96,6 +101,7 @@ export default function App() {
   }, [])
 
   function navigate(nextView: View, seriesId: string | null) {
+    if (view === 'home') homeScrollRef.current = window.scrollY
     window.history.pushState({ view: nextView, seriesId } satisfies HistoryState, '')
     setView(nextView)
     setSelectedSeriesId(seriesId)
@@ -104,6 +110,14 @@ export default function App() {
   function goBack() {
     window.history.back()
   }
+
+  // Runs after every view switch (both in-app navigation and the browser's
+  // own back gesture/button, which only updates state via popstate): reset to
+  // the top for a freshly-opened screen, or restore the home screen to where
+  // the user left off.
+  useEffect(() => {
+    window.scrollTo(0, view === 'home' ? homeScrollRef.current : 0)
+  }, [view])
 
   const volumesBySeriesId = useMemo(() => {
     const map: Record<string, Volume[]> = {}

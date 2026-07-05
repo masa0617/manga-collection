@@ -72,6 +72,7 @@ async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promis
         ? {
             estimatedTotalVolumeCount: estimate.totalVolumeCount,
             estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
+            kanaReading: series.kanaReading ?? estimate.titleReading,
           }
         : {}),
     }

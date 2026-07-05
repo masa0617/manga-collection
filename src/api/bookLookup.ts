@@ -68,6 +68,7 @@ async function lookupNdl(isbn: string): Promise<BookInfo | null> {
   if (!item) return null
   const rawTitle = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
   const title = rawTitle ? toHalfWidth(rawTitle) : undefined
+  const titleReading = item.getElementsByTagName('dcndl:titleTranscription')[0]?.textContent?.trim() || undefined
   const creatorValues = Array.from(item.getElementsByTagName('dc:creator'))
     .map((el) => el.textContent?.trim())
     .filter((v): v is string => Boolean(v))
@@ -76,7 +77,7 @@ async function lookupNdl(isbn: string): Promise<BookInfo | null> {
   const magazine = item.getElementsByTagName('dcndl:seriesTitle')[0]?.textContent?.trim() || undefined
   const volumeLabel = item.getElementsByTagName('dcndl:volume')[0]?.textContent?.trim()
   const volumeNumber = volumeLabel ? extractVolumeNumberFromLabel(volumeLabel) ?? undefined : undefined
-  const info: BookInfo = { title, author, publisher, magazine, volumeNumber }
+  const info: BookInfo = { title, titleReading, author, publisher, magazine, volumeNumber }
   return info.title || info.author ? info : null
 }
 
@@ -112,9 +113,29 @@ export interface SeriesVolumeEstimate {
   // or not the user owns it - lets callers tell "a newer volume exists" apart
   // from "the volume I own happens to be new".
   latestReleaseDateISO?: string
+  // Reading (katakana) of the matched title, when NDL reports one - used to
+  // fill in Series.kanaReading for series that didn't get one at ISBN-lookup
+  // time (see lookupNdl's titleReading).
+  titleReading?: string
 }
 
 const MAX_PLAUSIBLE_VOLUME_NUMBER = 300
+
+// This app only tracks printed tankobon (physical comic volumes), but a
+// title+author search on NDL Search also surfaces digital-only editions:
+// per-chapter "singles" (e.g. "はじめてのセフレ【単話】21") published weekly
+// on services like やわらかスピリッツ, and other e-book/e-magazine listings.
+// Those get their own sequential numbering that has nothing to do with the
+// print volume count (a 2-volume printed series can have 20+ digital
+// singles), which is exactly what inflated totals like an incorrect "全21巻"
+// for a 2-volume series. NDL tags every record's format via plain RSS
+// <category> elements (e.g. "図書"/"紙" for print vs "電子書籍・電子雑誌"/
+// "デジタル" for digital), which is a far more reliable signal than trying to
+// pattern-match "【単話】" out of titles.
+function isDigitalOnlyRecord(item: Element): boolean {
+  const categories = Array.from(item.getElementsByTagName('category')).map((el) => el.textContent?.trim() ?? '')
+  return categories.some((c) => c.includes('電子') || c.includes('デジタル'))
+}
 
 // Best-effort total-volume-count estimate: searches NDL Search by title+
 // author (no API key required, unlike Google Books) and takes the highest
@@ -135,7 +156,12 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
 
   let maxVolume = 0
   let latestReleaseDateISO: string | undefined
+  let titleReading: string | undefined
   for (const item of Array.from(doc.querySelectorAll('item'))) {
+    if (isDigitalOnlyRecord(item)) continue
+    if (!titleReading) {
+      titleReading = item.getElementsByTagName('dcndl:titleTranscription')[0]?.textContent?.trim() || undefined
+    }
     const volumeLabel = item.getElementsByTagName('dcndl:volume')[0]?.textContent?.trim()
     // A record for a volume that's only just been announced (preorder, not
     // yet fully catalogued) commonly omits the structured dcndl:volume field
@@ -156,7 +182,7 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
     const date = item.getElementsByTagName('dc:date')[0]?.textContent?.trim()
     latestReleaseDateISO = parsePublishDate(issued || date)
   }
-  return maxVolume > 0 ? { totalVolumeCount: maxVolume, latestReleaseDateISO } : null
+  return maxVolume > 0 ? { totalVolumeCount: maxVolume, latestReleaseDateISO, titleReading } : null
 }
 
 export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {
@@ -181,6 +207,7 @@ export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {
     // PIECE") more faithfully than openBD, which sometimes normalizes case
     // (e.g. "One piece") - prefer it for the title specifically.
     title: ndl?.title || openBd?.title || google?.title,
+    titleReading: ndl?.titleReading,
     author: openBd?.author || ndl?.author || google?.author,
     publisher: openBd?.publisher || ndl?.publisher || google?.publisher,
     coverImageUrl: openBd?.coverImageUrl || google?.coverImageUrl,

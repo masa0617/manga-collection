@@ -31,6 +31,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   const [isbn, setIsbn] = useState('')
   const [publisher, setPublisher] = useState('')
   const [magazine, setMagazine] = useState('')
+  const [titleReading, setTitleReading] = useState<string | undefined>(undefined)
   const [releaseDateISO, setReleaseDateISO] = useState<string | undefined>(undefined)
   const [coverImageUrl, setCoverImageUrl] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -84,6 +85,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       if (info.magazine) setMagazine(info.magazine)
       if (info.releaseDateISO) setReleaseDateISO(info.releaseDateISO)
       if (info.coverImageUrl) setCoverImageUrl(info.coverImageUrl)
+      if (info.titleReading) setTitleReading(info.titleReading)
     } else {
       setMessage('書誌情報が見つかりませんでした。手動で入力してください。')
     }
@@ -111,6 +113,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       setMagazine(info.magazine ?? '')
       setReleaseDateISO(info.releaseDateISO)
       setCoverImageUrl(info.coverImageUrl ?? '')
+      setTitleReading(info.titleReading)
       setMessage(null)
     } else {
       setMessage('書誌情報が見つかりませんでした。')
@@ -134,6 +137,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
         createdAt: Date.now(),
         publisher: publisher || undefined,
         magazine: magazine || undefined,
+        kanaReading: titleReading,
       }
       await saveSeries(series)
     } else {
@@ -148,6 +152,10 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       }
       if (!series.magazine && magazine) {
         series.magazine = magazine
+        changed = true
+      }
+      if (!series.kanaReading && titleReading) {
+        series.kanaReading = titleReading
         changed = true
       }
       if (changed) await saveSeries(series)
@@ -184,6 +192,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
           ? {
               estimatedTotalVolumeCount: estimate.totalVolumeCount,
               estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
+              kanaReading: series.kanaReading ?? estimate.titleReading,
             }
           : {}),
       })
@@ -319,6 +328,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
                   setPublisher('')
                   setMagazine('')
                   setReleaseDateISO(undefined)
+                  setTitleReading(undefined)
                   setMessage(null)
                 }}
               >

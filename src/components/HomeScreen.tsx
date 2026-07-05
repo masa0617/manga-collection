@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import type { Series, Volume } from '../types'
 import SeriesCard from './SeriesCard'
+import { getSeriesSortKey } from '../utils/titleParsing'
 
 export type SortMode = 'kana' | 'recent'
+
+const kanaCollator = new Intl.Collator('ja')
 
 interface Props {
   seriesList: Series[]
@@ -37,7 +40,7 @@ export default function HomeScreen({
     if (sortMode === 'recent') {
       return latestActivityAt(volumesBySeriesId[b.id] ?? []) - latestActivityAt(volumesBySeriesId[a.id] ?? [])
     }
-    return a.name.localeCompare(b.name, 'ja')
+    return kanaCollator.compare(getSeriesSortKey(a), getSeriesSortKey(b))
   })
 
   return (

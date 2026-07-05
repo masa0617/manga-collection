@@ -1,0 +1,9 @@
+{
+  "name": "マンガ棚",
+  "short_name": "マンガ棚",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2e9d8",
+  "theme_color": "#f2e9d8"
+}

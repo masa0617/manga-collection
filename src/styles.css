@@ -42,6 +42,36 @@ body {
   flex-direction: column;
 }
 
+/* This app's layout is portrait-only. The Screen Orientation lock attempted
+   in main.tsx only takes effect for an installed/fullscreen PWA on Chromium -
+   Safari (and any plain browser tab) ignores it outright, so this CSS-only
+   guard is what actually guarantees portrait use everywhere: it blocks
+   interaction with a rotate-back prompt instead of letting the layout below
+   reflow into an untested landscape state. */
+.landscape-lock {
+  display: none;
+}
+
+@media (orientation: landscape) {
+  #root {
+    display: none;
+  }
+
+  .landscape-lock {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    background: var(--color-bg-soft);
+    color: var(--color-text);
+    font-size: 1.1rem;
+    z-index: 9999;
+  }
+}
+
 .loading-screen {
   display: flex;
   align-items: center;
@@ -235,18 +265,9 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-.upcoming-badge--inline {
-  position: static;
-  display: inline-block;
-  margin-left: 6px;
-  vertical-align: middle;
-  font-size: 0.7rem;
-}
-
-.series-card__upcoming {
-  font-size: 0.68rem;
-  color: var(--color-accent-dark);
-  margin-top: -2px;
+.upcoming-badge--corner {
+  left: auto;
+  right: 4px;
 }
 
 .upcoming-note {
@@ -325,6 +346,7 @@ body {
 /* Detail screen */
 .detail-info {
   display: flex;
+  align-items: flex-start;
   gap: 14px;
   margin-bottom: 16px;
 }

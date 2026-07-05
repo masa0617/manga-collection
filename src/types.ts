@@ -29,6 +29,12 @@ export interface Series {
   // ordering - set on every attempt (even a failed one) so a series whose
   // lookup keeps failing doesn't get hammered every app open.
   lastVolumeCheckAt?: number
+  // Reading (katakana) used to sort this series in gojuuon (50-on) order,
+  // captured opportunistically from NDL Search (see BookInfo.titleReading)
+  // whenever a lookup for this series happens to return one. Left unset when
+  // no source has ever supplied a reading, in which case sorting falls back
+  // to the series name itself.
+  kanaReading?: string
 }
 
 export interface Volume {
@@ -62,4 +68,8 @@ export interface BookInfo {
   magazine?: string
   // ISO date (YYYY-MM-DD) of the release, when a source reports one.
   releaseDateISO?: string
+  // Reading (katakana) of the title, from NDL Search's dcndl:titleTranscription -
+  // used to sort series in gojuuon (50-on) order regardless of whether the
+  // title itself is in kanji, kana, or the Roman alphabet (e.g. "ONE PIECE").
+  titleReading?: string
 }

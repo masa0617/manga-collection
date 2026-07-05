@@ -16,7 +16,7 @@ export function parsePublishDate(raw: string | undefined | null): string | undef
   return undefined
 }
 
-const NEW_RELEASE_WINDOW_DAYS = 30
+const NEW_RELEASE_WINDOW_DAYS = 14
 
 export function isRecentRelease(dateISO: string | undefined, now: Date = new Date()): boolean {
   if (!dateISO) return false

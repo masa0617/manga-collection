@@ -2,7 +2,6 @@ import type { MouseEvent } from 'react'
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
 import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
-import { formatJapaneseDate } from '../utils/publishDate'
 
 interface Props {
   series: Series
@@ -31,12 +30,6 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
       <div className="series-row" onClick={editMode ? undefined : onClick}>
         <span className="series-row__name">
           {hasMissing && <span className="warn-mark">⚠️</span>}
-          {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
-          {!isNewRelease && upcomingRelease && (
-            <span className="upcoming-badge upcoming-badge--inline">
-              {formatJapaneseDate(upcomingRelease.dateISO)}発売予定
-            </span>
-          )}
           {series.name}
         </span>
         <span className="series-row__actions">
@@ -70,15 +63,12 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
           )}
           {hasMissing && <span className="warn-badge">⚠️</span>}
           {isNewRelease && !editMode && <span className="new-badge">新刊</span>}
-          {!isNewRelease && upcomingRelease && !editMode && <span className="upcoming-badge">予約</span>}
+          {upcomingRelease && !editMode && <span className="upcoming-badge upcoming-badge--corner">予約</span>}
         </div>
         <div className="series-card__title">{series.name}</div>
         <div className="series-card__count">
           {totalVolumeCount ? `全${totalVolumeCount}巻中${volumes.length}巻` : `${volumes.length}冊`}
         </div>
-        {!isNewRelease && upcomingRelease && (
-          <div className="series-card__upcoming">{formatJapaneseDate(upcomingRelease.dateISO)}発売予定</div>
-        )}
       </button>
     </div>
   )
