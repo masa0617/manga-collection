@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { Series, Volume, BackupMeta } from './types'
+import type { Series, Volume, BackupMeta, WishlistItem } from './types'
 import { normalizeForMatch } from './utils/titleParsing'
 
 interface MangaDB extends DBSchema {
@@ -16,10 +16,14 @@ interface MangaDB extends DBSchema {
     key: string
     value: BackupMeta
   }
+  wishlist: {
+    key: string
+    value: WishlistItem
+  }
 }
 
 const DB_NAME = 'manga-collection'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 let dbPromise: Promise<IDBPDatabase<MangaDB>> | null = null
 
@@ -36,6 +40,12 @@ function getDb() {
         }
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' })
+        }
+        // Independent of series/volumes by design - a wishlist entry never
+        // shares a store (or an id namespace) with an owned series, so the
+        // two lists can never get mixed up.
+        if (!db.objectStoreNames.contains('wishlist')) {
+          db.createObjectStore('wishlist', { keyPath: 'id' })
         }
       },
     })
@@ -121,7 +131,27 @@ export async function markBackedUp(): Promise<void> {
   await saveBackupMeta({ key: 'backup', lastBackupAt: Date.now(), addedSinceBackup: 0 })
 }
 
-export async function exportAllData(): Promise<{ series: Series[]; volumes: Volume[]; exportedAt: number }> {
-  const [series, volumes] = await Promise.all([getAllSeries(), getAllVolumes()])
-  return { series, volumes, exportedAt: Date.now() }
+export async function getAllWishlistItems(): Promise<WishlistItem[]> {
+  const db = await getDb()
+  return db.getAll('wishlist')
+}
+
+export async function saveWishlistItem(item: WishlistItem): Promise<void> {
+  const db = await getDb()
+  await db.put('wishlist', item)
+}
+
+export async function deleteWishlistItem(id: string): Promise<void> {
+  const db = await getDb()
+  await db.delete('wishlist', id)
+}
+
+export async function exportAllData(): Promise<{
+  series: Series[]
+  volumes: Volume[]
+  wishlist: WishlistItem[]
+  exportedAt: number
+}> {
+  const [series, volumes, wishlist] = await Promise.all([getAllSeries(), getAllVolumes(), getAllWishlistItems()])
+  return { series, volumes, wishlist, exportedAt: Date.now() }
 }

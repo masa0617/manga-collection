@@ -173,77 +173,41 @@ export function parseVolumeFromTitle(rawTitle: string): ParsedTitle {
 
 const HIRAGANA_KATAKANA_ONLY = /^[぀-ゟ゠-ヿー\s　]+$/
 
-// Best-effort romaji -> katakana mora table (longest match first), used only
-// as a last-resort sort key when a title has no reading from NDL and isn't
-// already in kana. This is a plain letter-sound transliteration, not a
-// pronunciation dictionary - it gets actual Hepburn-romanized Japanese words
-// right (e.g. "naruto" -> "ナルト") but can't recover a stylized English
-// loanword reading like "ONE PIECE" -> "ワンピース" (that has no phonetic
-// relationship to the English spelling), which is what real NDL readings are
-// for.
-const ROMAJI_MORA: [string, string][] = [
-  ['kya', 'キャ'], ['kyu', 'キュ'], ['kyo', 'キョ'],
-  ['sha', 'シャ'], ['shu', 'シュ'], ['sho', 'ショ'],
-  ['cha', 'チャ'], ['chu', 'チュ'], ['cho', 'チョ'],
-  ['nya', 'ニャ'], ['nyu', 'ニュ'], ['nyo', 'ニョ'],
-  ['hya', 'ヒャ'], ['hyu', 'ヒュ'], ['hyo', 'ヒョ'],
-  ['mya', 'ミャ'], ['myu', 'ミュ'], ['myo', 'ミョ'],
-  ['rya', 'リャ'], ['ryu', 'リュ'], ['ryo', 'リョ'],
-  ['gya', 'ギャ'], ['gyu', 'ギュ'], ['gyo', 'ギョ'],
-  ['ja', 'ジャ'], ['ju', 'ジュ'], ['jo', 'ジョ'],
-  ['bya', 'ビャ'], ['byu', 'ビュ'], ['byo', 'ビョ'],
-  ['pya', 'ピャ'], ['pyu', 'ピュ'], ['pyo', 'ピョ'],
-  ['shi', 'シ'], ['chi', 'チ'], ['tsu', 'ツ'], ['fu', 'フ'],
-  ['ka', 'カ'], ['ki', 'キ'], ['ku', 'ク'], ['ke', 'ケ'], ['ko', 'コ'],
-  ['sa', 'サ'], ['su', 'ス'], ['se', 'セ'], ['so', 'ソ'],
-  ['ta', 'タ'], ['ti', 'チ'], ['tu', 'ツ'], ['te', 'テ'], ['to', 'ト'],
-  ['na', 'ナ'], ['ni', 'ニ'], ['nu', 'ヌ'], ['ne', 'ネ'], ['no', 'ノ'],
-  ['ha', 'ハ'], ['hi', 'ヒ'], ['he', 'ヘ'], ['ho', 'ホ'],
-  ['ma', 'マ'], ['mi', 'ミ'], ['mu', 'ム'], ['me', 'メ'], ['mo', 'モ'],
-  ['ya', 'ヤ'], ['yu', 'ユ'], ['yo', 'ヨ'],
-  ['ra', 'ラ'], ['ri', 'リ'], ['ru', 'ル'], ['re', 'レ'], ['ro', 'ロ'],
-  ['wa', 'ワ'], ['wo', 'ヲ'],
-  ['ga', 'ガ'], ['gi', 'ギ'], ['gu', 'グ'], ['ge', 'ゲ'], ['go', 'ゴ'],
-  ['za', 'ザ'], ['ji', 'ジ'], ['zu', 'ズ'], ['ze', 'ゼ'], ['zo', 'ゾ'],
-  ['da', 'ダ'], ['di', 'ヂ'], ['du', 'ヅ'], ['de', 'デ'], ['do', 'ド'],
-  ['ba', 'バ'], ['bi', 'ビ'], ['bu', 'ブ'], ['be', 'ベ'], ['bo', 'ボ'],
-  ['pa', 'パ'], ['pi', 'ピ'], ['pu', 'プ'], ['pe', 'ペ'], ['po', 'ポ'],
-  ['a', 'ア'], ['i', 'イ'], ['u', 'ウ'], ['e', 'エ'], ['o', 'オ'],
-  ['n', 'ン'],
-]
-
-function guessKatakanaFromRomaji(raw: string): string {
-  const s = raw.toLowerCase().replace(/[^a-z]/g, '')
-  let out = ''
-  let i = 0
-  while (i < s.length) {
-    // Doubled consonant -> small tsu (sokuon), e.g. "tt" in "kitto".
-    if (i + 1 < s.length && s[i] === s[i + 1] && !'aeiou'.includes(s[i]) && s[i] !== 'n') {
-      out += 'ッ'
-      i += 1
-      continue
-    }
-    const found = ROMAJI_MORA.find(([mora]) => s.startsWith(mora, i))
-    if (found) {
-      out += found[1]
-      i += found[0].length
-    } else {
-      i += 1
-    }
-  }
-  return out
+export interface KanaSortKey {
+  // Bucket 0 holds names with a confirmed reading - either a captured
+  // kanaReading or a name that's already all kana - safe to compare directly
+  // with a kana-aware collator. Bucket 1 holds everything else (kanji with no
+  // captured reading, stylized Latin titles like "BLEACH" whose real
+  // Japanese reading has no phonetic relationship to the English spelling):
+  // guessing at those produces confidently *wrong* sort positions (e.g. a
+  // naive romaji transliteration of "BLEACH" lands it under the "え" row),
+  // which is worse than a plain, predictable rule. They're sorted after
+  // every bucket-0 entry instead, ordered by their own text.
+  bucket: 0 | 1
+  key: string
 }
 
 // Best-effort sort key for 50-on (gojuuon) ordering: prefers the real
-// reading captured from NDL (series.kanaReading), falls back to the name
-// itself when it's already all kana, and otherwise makes a rough phonetic
-// guess for a Latin-letter name so it at least lands near its plausible
-// spot instead of being clustered away from every kana/kanji title (which is
-// what plain string comparison does).
-export function getSeriesSortKey(series: { name: string; kanaReading?: string }): string {
-  if (series.kanaReading) return toHalfWidth(series.kanaReading).replace(/\s+/g, '')
-  const name = series.name.trim()
-  if (HIRAGANA_KATAKANA_ONLY.test(name)) return name
-  if (/^[A-Za-z0-9\s!?.,:;'"&×\-]+$/.test(name)) return guessKatakanaFromRomaji(name)
-  return name
+// reading captured from NDL (kanaReading), falls back to the name itself
+// when it's already all kana, and otherwise defers to bucket 1 - see
+// KanaSortKey.
+export function getKanaSortKey(name: string, kanaReading?: string): KanaSortKey {
+  if (kanaReading) return { bucket: 0, key: toHalfWidth(kanaReading).replace(/\s+/g, '') }
+  const trimmed = name.trim()
+  if (HIRAGANA_KATAKANA_ONLY.test(trimmed)) return { bucket: 0, key: trimmed }
+  return { bucket: 1, key: trimmed }
+}
+
+const kanaCollator = new Intl.Collator('ja')
+
+export function compareKanaSortKeys(a: KanaSortKey, b: KanaSortKey): number {
+  if (a.bucket !== b.bucket) return a.bucket - b.bucket
+  if (a.bucket === 0) return kanaCollator.compare(a.key, b.key)
+  // Bucket 1 (unknown reading): ordered by the title's own character code,
+  // per a plain, predictable rule rather than a guess.
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0
+}
+
+export function compareByKana(a: { name: string; kanaReading?: string }, b: { name: string; kanaReading?: string }): number {
+  return compareKanaSortKeys(getKanaSortKey(a.name, a.kanaReading), getKanaSortKey(b.name, b.kanaReading))
 }

@@ -182,7 +182,14 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
     const date = item.getElementsByTagName('dc:date')[0]?.textContent?.trim()
     latestReleaseDateISO = parsePublishDate(issued || date)
   }
-  return maxVolume > 0 ? { totalVolumeCount: maxVolume, latestReleaseDateISO, titleReading } : null
+  // A titleReading captured along the way is worth keeping even when no
+  // record had a usable volume number (e.g. every hit was filtered out as
+  // digital-only, or none had a parseable dcndl:volume/title) - discarding it
+  // in that case used to mean a series' kanaReading (see Series.kanaReading)
+  // could never get backfilled at all, permanently stuck on the unreliable
+  // romaji-guess sort fallback.
+  if (maxVolume === 0 && !titleReading) return null
+  return { totalVolumeCount: maxVolume, latestReleaseDateISO, titleReading }
 }
 
 export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {

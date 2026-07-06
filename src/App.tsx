@@ -3,6 +3,9 @@ import HomeScreen, { type SortMode } from './components/HomeScreen'
 import SeriesDetailScreen from './components/SeriesDetailScreen'
 import AddScreen from './components/AddScreen'
 import BackupBanner from './components/BackupBanner'
+import BottomTabBar, { type MainTab } from './components/BottomTabBar'
+import WishlistScreen from './components/WishlistScreen'
+import WishlistFormScreen from './components/WishlistFormScreen'
 import {
   getAllSeries,
   getAllVolumes,
@@ -10,12 +13,16 @@ import {
   deleteVolume,
   deleteSeries,
   saveSeries,
+  findSeriesByName,
   markBackedUp,
   exportAllData,
+  getAllWishlistItems,
+  saveWishlistItem,
+  deleteWishlistItem,
 } from './db'
 import { shouldPromptBackup, shareOrDownloadJson } from './utils/backup'
 import { runBackgroundVolumeCheck } from './utils/volumeCheckScheduler'
-import type { Series, Volume, BackupMeta } from './types'
+import type { Series, Volume, BackupMeta, WishlistItem } from './types'
 
 // While the app stays open, re-trigger a check cycle on this interval so a
 // long-lived session keeps working through the backlog instead of only
@@ -23,29 +30,38 @@ import type { Series, Volume, BackupMeta } from './types'
 // for a recheck - see volumeCheckScheduler).
 const VOLUME_CHECK_RETRIGGER_MS = 10 * 60 * 1000
 
-type View = 'home' | 'detail' | 'add'
+type View = 'home' | 'detail' | 'add' | 'wishlist' | 'wishlistForm'
 
 interface HistoryState {
   view: View
   seriesId: string | null
+  wishlistItemId: string | null
 }
 
 function readHistoryState(state: unknown): HistoryState {
   if (state && typeof state === 'object' && 'view' in state) {
     const s = state as Partial<HistoryState>
-    if (s.view === 'detail' || s.view === 'add' || s.view === 'home') {
-      return { view: s.view, seriesId: s.seriesId ?? null }
+    if (
+      s.view === 'detail' ||
+      s.view === 'add' ||
+      s.view === 'home' ||
+      s.view === 'wishlist' ||
+      s.view === 'wishlistForm'
+    ) {
+      return { view: s.view, seriesId: s.seriesId ?? null, wishlistItemId: s.wishlistItemId ?? null }
     }
   }
-  return { view: 'home', seriesId: null }
+  return { view: 'home', seriesId: null, wishlistItemId: null }
 }
 
 export default function App() {
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [volumes, setVolumes] = useState<Volume[]>([])
+  const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([])
   const [backupMeta, setBackupMeta] = useState<BackupMeta | null>(null)
   const [view, setView] = useState<View>('home')
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | null>(null)
+  const [selectedWishlistItemId, setSelectedWishlistItemId] = useState<string | null>(null)
   const [homeViewMode, setHomeViewMode] = useState<'grid' | 'list'>('grid')
   const [sortMode, setSortMode] = useState<SortMode>('kana')
   const [loading, setLoading] = useState(true)
@@ -56,10 +72,16 @@ export default function App() {
   const homeScrollRef = useRef(0)
 
   async function refresh() {
-    const [s, v, meta] = await Promise.all([getAllSeries(), getAllVolumes(), getBackupMeta()])
+    const [s, v, meta, w] = await Promise.all([
+      getAllSeries(),
+      getAllVolumes(),
+      getBackupMeta(),
+      getAllWishlistItems(),
+    ])
     setSeriesList(s)
     setVolumes(v)
     setBackupMeta(meta)
+    setWishlistItems(w)
     setLoading(false)
   }
 
@@ -89,22 +111,24 @@ export default function App() {
   // navigate the app instead of only our in-app "戻る" buttons.
   useEffect(() => {
     if (!window.history.state) {
-      window.history.replaceState({ view: 'home', seriesId: null } satisfies HistoryState, '')
+      window.history.replaceState({ view: 'home', seriesId: null, wishlistItemId: null } satisfies HistoryState, '')
     }
     function onPopState(e: PopStateEvent) {
       const state = readHistoryState(e.state)
       setView(state.view)
       setSelectedSeriesId(state.seriesId)
+      setSelectedWishlistItemId(state.wishlistItemId)
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
-  function navigate(nextView: View, seriesId: string | null) {
-    if (view === 'home') homeScrollRef.current = window.scrollY
-    window.history.pushState({ view: nextView, seriesId } satisfies HistoryState, '')
+  function navigate(nextView: View, seriesId: string | null = null, wishlistItemId: string | null = null) {
+    if (view === 'home' || view === 'wishlist') homeScrollRef.current = window.scrollY
+    window.history.pushState({ view: nextView, seriesId, wishlistItemId } satisfies HistoryState, '')
     setView(nextView)
     setSelectedSeriesId(seriesId)
+    setSelectedWishlistItemId(wishlistItemId)
   }
 
   function goBack() {
@@ -129,6 +153,7 @@ export default function App() {
   }, [volumes])
 
   const selectedSeries = seriesList.find((s) => s.id === selectedSeriesId) ?? null
+  const selectedWishlistItem = wishlistItems.find((w) => w.id === selectedWishlistItemId) ?? null
 
   async function handleBackup() {
     const data = await exportAllData()
@@ -148,6 +173,50 @@ export default function App() {
       goBack()
     }
     await refresh()
+  }
+
+  async function handleSaveWishlistItem(item: WishlistItem) {
+    await saveWishlistItem(item)
+    await refresh()
+    goBack()
+  }
+
+  async function handleDeleteWishlistItem(id: string) {
+    await deleteWishlistItem(id)
+    await refresh()
+  }
+
+  // Moves a wishlist entry into the owned collection as a new (volume-less)
+  // series - the user adds actual volumes afterward through the normal "+"
+  // flow, since a wishlist entry never had ISBNs/volume numbers to begin
+  // with. Reuses an existing series with the same name instead of creating a
+  // duplicate, matching how AddScreen treats a fresh scan of a known series.
+  async function handleConvertWishlistItemToSeries(item: WishlistItem) {
+    let series = await findSeriesByName(item.title)
+    if (!series) {
+      series = {
+        id: crypto.randomUUID(),
+        name: item.title,
+        author: item.author?.trim() ?? '',
+        createdAt: Date.now(),
+        publisher: item.publisher || undefined,
+        magazine: item.magazine || undefined,
+        customCoverUrl: item.coverImageUrl || undefined,
+      }
+      await saveSeries(series)
+    }
+    await deleteWishlistItem(item.id)
+    await refresh()
+    // Replaces the current (wishlistForm) history entry instead of pushing a
+    // new one, so the back gesture from the series detail screen returns to
+    // the wishlist list, not to a form for an entry that no longer exists.
+    window.history.replaceState(
+      { view: 'detail', seriesId: series.id, wishlistItemId: null } satisfies HistoryState,
+      '',
+    )
+    setView('detail')
+    setSelectedSeriesId(series.id)
+    setSelectedWishlistItemId(null)
   }
 
   async function handleUpdateCover(coverUrl: string) {
@@ -206,6 +275,28 @@ export default function App() {
             goBack()
           }}
         />
+      )}
+
+      {view === 'wishlist' && (
+        <WishlistScreen
+          items={wishlistItems}
+          onSelectItem={(id) => navigate('wishlistForm', null, id)}
+          onDeleteItem={handleDeleteWishlistItem}
+          onAdd={() => navigate('wishlistForm', null, null)}
+        />
+      )}
+
+      {view === 'wishlistForm' && (
+        <WishlistFormScreen
+          item={selectedWishlistItem}
+          onCancel={goBack}
+          onSave={handleSaveWishlistItem}
+          onConvertToSeries={handleConvertWishlistItemToSeries}
+        />
+      )}
+
+      {(view === 'home' || view === 'wishlist') && (
+        <BottomTabBar active={view} onChange={(tab) => (tab !== view ? navigate(tab) : undefined)} />
       )}
     </div>
   )

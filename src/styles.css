@@ -484,6 +484,10 @@ body {
   }
 }
 
+.fab--tabbar {
+  bottom: calc(24px + 56px + env(safe-area-inset-bottom, 0px));
+}
+
 /* Backup banner */
 .backup-banner {
   width: 100%;
@@ -733,4 +737,45 @@ body {
 .button--ghost {
   background: none;
   color: var(--color-accent-dark);
+}
+
+/* Bottom tab bar (home / wishlist) */
+.home-screen,
+.wishlist-screen {
+  padding-bottom: calc(90px + 56px);
+}
+
+.bottom-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  z-index: 15;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.bottom-tab {
+  flex: 1;
+  padding: 12px 6px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.bottom-tab--active {
+  color: var(--color-accent-dark);
+}
+
+/* Wishlist form */
+.wishlist-form__convert {
+  align-self: center;
+  margin-top: 4px;
 }

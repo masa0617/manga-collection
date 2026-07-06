@@ -37,6 +37,16 @@ export interface Series {
   kanaReading?: string
 }
 
+export interface WishlistItem {
+  id: string
+  title: string
+  author?: string
+  publisher?: string
+  magazine?: string
+  coverImageUrl?: string
+  createdAt: number
+}
+
 export interface Volume {
   id: string
   seriesId: string
