@@ -138,6 +138,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
         publisher: publisher || undefined,
         magazine: magazine || undefined,
         kanaReading: titleReading,
+        kanaReadingSource: titleReading ? 'isbn' : undefined,
       }
       await saveSeries(series)
     } else {
@@ -154,8 +155,12 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
         series.magazine = magazine
         changed = true
       }
-      if (!series.kanaReading && titleReading) {
+      // A per-ISBN reading is always for the exact scanned book, so it's
+      // trusted over whatever's already cached - unlike the estimate-search
+      // path below, there's no ambiguity about which record it came from.
+      if (titleReading && series.kanaReading !== titleReading) {
         series.kanaReading = titleReading
+        series.kanaReadingSource = 'isbn'
         changed = true
       }
       if (changed) await saveSeries(series)
@@ -192,7 +197,12 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
           ? {
               estimatedTotalVolumeCount: estimate.totalVolumeCount,
               estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
-              kanaReading: series.kanaReading ?? estimate.titleReading,
+              // Never overrides an 'isbn' reading (always reliable, from an
+              // exact ISBN lookup) - anything else stays eligible for this
+              // text-search estimate to (re)fill in, see Series.kanaReadingSource.
+              ...(series.kanaReadingSource !== 'isbn' && estimate.titleReading
+                ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
+                : {}),
             }
           : {}),
       })

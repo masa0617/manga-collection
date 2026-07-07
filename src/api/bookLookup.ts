@@ -2,9 +2,11 @@ import type { BookInfo } from '../types'
 import {
   extractVolumeNumberFromLabel,
   formatCatalogAuthors,
+  normalizeForMatch,
   parseVolumeFromTitle,
   toHalfWidth,
 } from '../utils/titleParsing'
+import { isLikelySameSeries } from '../utils/seriesMatching'
 import { parsePublishDate } from '../utils/publishDate'
 
 // Shorter timeout than a "give the network every benefit of the doubt"
@@ -154,14 +156,37 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml')
   if (doc.querySelector('parsererror')) return null
 
+  const queryNormalized = normalizeForMatch(seriesName)
   let maxVolume = 0
   let latestReleaseDateISO: string | undefined
+  // titleReading: captured only from a record that also yields a genuine
+  // volume number - high confidence it's an actual tankobon in the series,
+  // not a subtitled special (character book, "reissue" edition, ...) that
+  // happens to title-match. fallbackTitleReading covers the rare case where
+  // no candidate has a usable volume number at all, so a plausible reading
+  // still beats none.
   let titleReading: string | undefined
+  let fallbackTitleReading: string | undefined
   for (const item of Array.from(doc.querySelectorAll('item'))) {
     if (isDigitalOnlyRecord(item)) continue
-    if (!titleReading) {
-      titleReading = item.getElementsByTagName('dcndl:titleTranscription')[0]?.textContent?.trim() || undefined
+
+    const title = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
+    const parsedTitle = title ? parseVolumeFromTitle(toHalfWidth(title)) : null
+    // NDL's title+author text search is loose enough to also surface tie-in
+    // material - character books, bootleg/art books, movie novelizations -
+    // that share the queried title/author but aren't the series itself
+    // (e.g. searching "BLEACH"/久保帯人 surfaces "UNMASKED: BLEACH official
+    // character book 3" ahead of any real volume). Confirming the parsed
+    // series name plausibly matches the query before trusting a record's
+    // reading/volume number keeps that noise out - previously it could get
+    // read as the real series, e.g. sorting BLEACH under "ア" instead of "ブ".
+    if (!parsedTitle?.seriesName || !isLikelySameSeries(normalizeForMatch(parsedTitle.seriesName), queryNormalized)) {
+      continue
     }
+
+    const reading = item.getElementsByTagName('dcndl:titleTranscription')[0]?.textContent?.trim() || undefined
+    if (!fallbackTitleReading) fallbackTitleReading = reading
+
     const volumeLabel = item.getElementsByTagName('dcndl:volume')[0]?.textContent?.trim()
     // A record for a volume that's only just been announced (preorder, not
     // yet fully catalogued) commonly omits the structured dcndl:volume field
@@ -170,26 +195,23 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
     // series' newest volume - the one that actually matters for detecting a
     // new release - could be invisible to this estimate for weeks after it
     // was announced. Fall back to parsing the title so it's still counted.
-    const title = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
-    const num = volumeLabel
-      ? Number(volumeLabel.match(/^\[?(\d{1,3})\]?$/)?.[1])
-      : title
-        ? parseVolumeFromTitle(toHalfWidth(title)).volumeNumber
-        : null
+    const num = volumeLabel ? Number(volumeLabel.match(/^\[?(\d{1,3})\]?$/)?.[1]) : parsedTitle.volumeNumber
     if (!num || num <= 0 || num > MAX_PLAUSIBLE_VOLUME_NUMBER || num < maxVolume) continue
     maxVolume = num
+    if (!titleReading) titleReading = reading
     const issued = item.getElementsByTagName('dcterms:issued')[0]?.textContent?.trim()
     const date = item.getElementsByTagName('dc:date')[0]?.textContent?.trim()
     latestReleaseDateISO = parsePublishDate(issued || date)
   }
+  const resolvedTitleReading = titleReading ?? fallbackTitleReading
   // A titleReading captured along the way is worth keeping even when no
   // record had a usable volume number (e.g. every hit was filtered out as
   // digital-only, or none had a parseable dcndl:volume/title) - discarding it
   // in that case used to mean a series' kanaReading (see Series.kanaReading)
   // could never get backfilled at all, permanently stuck on the unreliable
   // romaji-guess sort fallback.
-  if (maxVolume === 0 && !titleReading) return null
-  return { totalVolumeCount: maxVolume, latestReleaseDateISO, titleReading }
+  if (maxVolume === 0 && !resolvedTitleReading) return null
+  return { totalVolumeCount: maxVolume, latestReleaseDateISO, titleReading: resolvedTitleReading }
 }
 
 export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {

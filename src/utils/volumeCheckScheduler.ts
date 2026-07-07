@@ -1,5 +1,5 @@
 import { estimateSeriesVolumes } from '../api/bookLookup'
-import { getAllSeries, saveSeries } from '../db'
+import { getAllSeries, saveSeries, getBackupMeta, saveBackupMeta } from '../db'
 import type { Series } from '../types'
 
 // With collections in the hundreds-to-thousands of series, refreshing every
@@ -27,10 +27,30 @@ export interface VolumeCheckCallbacks {
 // proper queue/lock, since only one cycle needs to ever be active at a time.
 let running = false
 
+// One-time, per-device migration: a past version of estimateSeriesVolumes
+// could match tie-in material (character books, novelizations, ...) instead
+// of the series itself and cache its reading as Series.kanaReading, e.g.
+// sorting "BLEACH" under "ア" instead of "ブ". That's now filtered out, but a
+// contaminated reading already saved is never revisited by the normal check
+// below (kanaReadingSource !== 'isbn' is the only gate on overwriting it,
+// and lastVolumeCheckAt is already recent from the run that cached it) -
+// this forces exactly those series back into the "due" pool once so they
+// get re-verified against the fixed matching logic right away instead of
+// waiting out their existing 6h cooldown.
+async function runKanaReadingMigrationOnce(): Promise<void> {
+  const meta = await getBackupMeta()
+  if (meta.kanaMigrationDoneAt) return
+  const all = await getAllSeries()
+  const affected = all.filter((s) => s.kanaReadingSource !== 'isbn')
+  await Promise.all(affected.map((s) => saveSeries({ ...s, lastVolumeCheckAt: undefined })))
+  await saveBackupMeta({ ...meta, kanaMigrationDoneAt: Date.now() })
+}
+
 export async function runBackgroundVolumeCheck(callbacks: VolumeCheckCallbacks = {}): Promise<void> {
   if (running) return
   running = true
   try {
+    await runKanaReadingMigrationOnce()
     const all = await getAllSeries()
     const now = Date.now()
     const stale = all
@@ -72,7 +92,10 @@ async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promis
         ? {
             estimatedTotalVolumeCount: estimate.totalVolumeCount,
             estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
-            kanaReading: series.kanaReading ?? estimate.titleReading,
+            // Never overrides an 'isbn' reading, see Series.kanaReadingSource.
+            ...(series.kanaReadingSource !== 'isbn' && estimate.titleReading
+              ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
+              : {}),
           }
         : {}),
     }

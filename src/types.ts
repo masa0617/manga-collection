@@ -35,6 +35,16 @@ export interface Series {
   // no source has ever supplied a reading, in which case sorting falls back
   // to the series name itself.
   kanaReading?: string
+  // Where kanaReading came from - 'isbn' (a per-ISBN NDL lookup, which
+  // targets one exact catalog record, so always reliable) or 'estimate' (the
+  // title+author text search in estimateSeriesVolumes, which can currently
+  // match tie-in material sharing the same title/author instead of the
+  // series itself). Left unset for anything captured before this
+  // distinction existed. Only an 'isbn' reading is treated as settled;
+  // anything else stays eligible to be re-verified and overwritten by a
+  // later, better estimate (see volumeCheckScheduler's kana-reading
+  // migration) instead of being stuck on a possibly-wrong value forever.
+  kanaReadingSource?: 'isbn' | 'estimate'
 }
 
 export interface WishlistItem {
@@ -63,6 +73,12 @@ export interface BackupMeta {
   key: 'backup'
   lastBackupAt: number
   addedSinceBackup: number
+  // Set once the kana-reading migration (see volumeCheckScheduler) has run:
+  // forces an immediate re-check of every series whose kanaReading isn't
+  // confirmed 'isbn'-sourced, bypassing the normal 6h-per-series cooldown so
+  // readings contaminated by the estimate-matching bug this fixed don't sit
+  // wrong for up to 6 hours after the app updates. Runs only once per device.
+  kanaMigrationDoneAt?: number
 }
 
 export interface BookInfo {
