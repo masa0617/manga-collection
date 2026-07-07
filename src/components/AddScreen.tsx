@@ -193,17 +193,20 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       await saveSeries({
         ...series,
         lastVolumeCheckAt: Date.now(),
-        ...(estimate
+        // A search that came back with no usable volume number (see
+        // SeriesVolumeEstimate.totalVolumeCount) must leave an already-cached
+        // total alone rather than blank it out.
+        ...(estimate?.totalVolumeCount
           ? {
               estimatedTotalVolumeCount: estimate.totalVolumeCount,
               estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
-              // Never overrides an 'isbn' reading (always reliable, from an
-              // exact ISBN lookup) - anything else stays eligible for this
-              // text-search estimate to (re)fill in, see Series.kanaReadingSource.
-              ...(series.kanaReadingSource !== 'isbn' && estimate.titleReading
-                ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
-                : {}),
             }
+          : {}),
+        // Never overrides an 'isbn' reading (always reliable, from an
+        // exact ISBN lookup) - anything else stays eligible for this
+        // text-search estimate to (re)fill in, see Series.kanaReadingSource.
+        ...(series.kanaReadingSource !== 'isbn' && estimate?.titleReading
+          ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
           : {}),
       })
     } catch (err) {

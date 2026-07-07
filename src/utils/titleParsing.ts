@@ -71,6 +71,21 @@ export function extractVolumeNumberFromLabel(label: string): number | null {
   return kanjiToNumber(stripped)
 }
 
+// A looser sibling of extractVolumeNumberFromLabel for scanning dcndl:volume
+// across a whole title+author search's worth of records (see
+// estimateSeriesVolumes), where the field is noisier than a single trusted
+// per-ISBN lookup: full-width digits ("３２"), a leading "その" counter word
+// used by some anthology/4-koma series (e.g. 月曜日のたわわ's "その1"), and a
+// trailing arc-name annotation NDL sometimes appends in parens (e.g.
+// "1 (死神代行篇 1 (邂逅))", "55 (The blood warfare)"). Reads only the leading
+// number and ignores whatever follows, rather than requiring the whole label
+// to be nothing but a number.
+export function extractLeadingVolumeNumber(label: string): number | null {
+  const stripped = toHalfWidth(label.trim()).replace(/^その/, '').trim()
+  const match = stripped.match(/^\[?(\d{1,3})\]?/)
+  return match ? Number(match[1]) : null
+}
+
 // NDL sometimes reports a parallel title joining the original spelling and a
 // Japanese reading with "=", e.g. "One piece = ワンピース". Keep only the
 // part before it.

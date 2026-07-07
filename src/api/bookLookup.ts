@@ -1,5 +1,6 @@
 import type { BookInfo } from '../types'
 import {
+  extractLeadingVolumeNumber,
   extractVolumeNumberFromLabel,
   formatCatalogAuthors,
   normalizeForMatch,
@@ -110,7 +111,10 @@ async function lookupGoogleBooks(isbn: string): Promise<BookInfo | null> {
 }
 
 export interface SeriesVolumeEstimate {
-  totalVolumeCount: number
+  // Absent (not 0) when no candidate record yielded a usable volume number -
+  // callers must treat that as "couldn't refresh the count this time" and
+  // keep whatever total they already had, not overwrite it with 0/unknown.
+  totalVolumeCount?: number
   // Release date associated with the highest-numbered volume found, whether
   // or not the user owns it - lets callers tell "a newer volume exists" apart
   // from "the volume I own happens to be new".
@@ -195,7 +199,12 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
     // series' newest volume - the one that actually matters for detecting a
     // new release - could be invisible to this estimate for weeks after it
     // was announced. Fall back to parsing the title so it's still counted.
-    const num = volumeLabel ? Number(volumeLabel.match(/^\[?(\d{1,3})\]?$/)?.[1]) : parsedTitle.volumeNumber
+    // dcndl:volume itself is noisier across a whole search than a single
+    // trusted per-ISBN record - full-width digits, a "その1" counter, or a
+    // trailing arc-name annotation ("55 (The blood warfare)") are all real
+    // NDL formats, not just a bare number - so extractLeadingVolumeNumber is
+    // used instead of requiring an exact numeric match.
+    const num = volumeLabel ? extractLeadingVolumeNumber(volumeLabel) : parsedTitle.volumeNumber
     if (!num || num <= 0 || num > MAX_PLAUSIBLE_VOLUME_NUMBER || num < maxVolume) continue
     maxVolume = num
     if (!titleReading) titleReading = reading
@@ -209,9 +218,16 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
   // digital-only, or none had a parseable dcndl:volume/title) - discarding it
   // in that case used to mean a series' kanaReading (see Series.kanaReading)
   // could never get backfilled at all, permanently stuck on the unreliable
-  // romaji-guess sort fallback.
+  // romaji-guess sort fallback. But totalVolumeCount itself must stay absent
+  // rather than 0 in that case - see SeriesVolumeEstimate.totalVolumeCount -
+  // so a caller that already has a real cached count never clobbers it with
+  // "unknown" just because this particular search came up empty-handed.
   if (maxVolume === 0 && !resolvedTitleReading) return null
-  return { totalVolumeCount: maxVolume, latestReleaseDateISO, titleReading: resolvedTitleReading }
+  return {
+    totalVolumeCount: maxVolume > 0 ? maxVolume : undefined,
+    latestReleaseDateISO,
+    titleReading: resolvedTitleReading,
+  }
 }
 
 export async function lookupBookByIsbn(isbn: string): Promise<BookInfo | null> {

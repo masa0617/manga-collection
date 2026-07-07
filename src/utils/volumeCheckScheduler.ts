@@ -88,15 +88,20 @@ async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promis
     const updated: Series = {
       ...series,
       lastVolumeCheckAt: attemptedAt,
-      ...(estimate
+      // A search that came back with no usable volume number (see
+      // SeriesVolumeEstimate.totalVolumeCount) must leave an already-cached
+      // total alone rather than blank it out - this recheck runs on every
+      // series every few hours, so a single noisy/incomplete NDL response
+      // must never regress a count that was previously found successfully.
+      ...(estimate?.totalVolumeCount
         ? {
             estimatedTotalVolumeCount: estimate.totalVolumeCount,
             estimatedLatestReleaseDateISO: estimate.latestReleaseDateISO,
-            // Never overrides an 'isbn' reading, see Series.kanaReadingSource.
-            ...(series.kanaReadingSource !== 'isbn' && estimate.titleReading
-              ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
-              : {}),
           }
+        : {}),
+      // Never overrides an 'isbn' reading, see Series.kanaReadingSource.
+      ...(series.kanaReadingSource !== 'isbn' && estimate?.titleReading
+        ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
         : {}),
     }
     await saveSeries(updated)
