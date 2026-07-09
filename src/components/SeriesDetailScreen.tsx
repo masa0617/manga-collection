@@ -3,6 +3,7 @@ import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
 import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
 import { formatJapaneseDate } from '../utils/publishDate'
+import { getDisplayTotalVolumeCount } from '../utils/volumeEstimate'
 import CoverPicker from './CoverPicker'
 
 interface Props {
@@ -33,7 +34,7 @@ export default function SeriesDetailScreen({
   const isNewRelease = hasRecentNewRelease(series, volumes)
   const upcomingRelease = getUpcomingRelease(series, volumes)
   const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
-  const totalVolumeCount = series.manualTotalVolumeCount ?? series.estimatedTotalVolumeCount
+  const totalVolumeCount = getDisplayTotalVolumeCount(series, volumes)
 
   function startEditingTotal() {
     setTotalInput(totalVolumeCount ? String(totalVolumeCount) : '')

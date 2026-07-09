@@ -73,12 +73,17 @@ export interface BackupMeta {
   key: 'backup'
   lastBackupAt: number
   addedSinceBackup: number
-  // Set once the kana-reading migration (see volumeCheckScheduler) has run:
-  // forces an immediate re-check of every series whose kanaReading isn't
-  // confirmed 'isbn'-sourced, bypassing the normal 6h-per-series cooldown so
-  // readings contaminated by the estimate-matching bug this fixed don't sit
-  // wrong for up to 6 hours after the app updates. Runs only once per device.
-  kanaMigrationDoneAt?: number
+  // Highest ESTIMATE_ALGO_VERSION (see volumeCheckScheduler) whose forced
+  // recheck migration has already run on this device. Whenever a change to
+  // estimateSeriesVolumes' matching/parsing logic could make already-cached
+  // estimatedTotalVolumeCount/kanaReading values wrong, ESTIMATE_ALGO_VERSION
+  // is bumped and every series gets lastVolumeCheckAt cleared once so the
+  // next background cycle re-verifies them immediately instead of waiting
+  // out the normal 6h-per-series cooldown (or, worse, sitting on a bad
+  // value indefinitely because nothing ever asks again). A single
+  // incrementing counter instead of a one-off boolean flag per fix, so a
+  // future correction only needs to bump the constant.
+  appliedEstimateAlgoVersion?: number
 }
 
 export interface BookInfo {

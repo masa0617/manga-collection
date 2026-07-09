@@ -339,6 +339,26 @@ body {
   font-size: 0.85rem;
 }
 
+/* Wishlist row: title + author must always fit on one line, truncated with
+   an ellipsis rather than wrapping or overflowing - title is prioritized
+   since it's a single nowrap/ellipsis span containing both. */
+.wishlist-row__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wishlist-row__title {
+  font-weight: 600;
+}
+
+.wishlist-row__author {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 .warn-mark {
   margin-right: 6px;
 }

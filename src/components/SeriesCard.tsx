@@ -2,6 +2,7 @@ import type { MouseEvent } from 'react'
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
 import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
+import { getDisplayTotalVolumeCount } from '../utils/volumeEstimate'
 
 interface Props {
   series: Series
@@ -18,7 +19,7 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
   const hasMissing = getMissingVolumes(volumes.map((v) => v.volumeNumber)).length > 0
   const isNewRelease = hasRecentNewRelease(series, volumes)
   const upcomingRelease = getUpcomingRelease(series, volumes)
-  const totalVolumeCount = series.manualTotalVolumeCount ?? series.estimatedTotalVolumeCount
+  const totalVolumeCount = getDisplayTotalVolumeCount(series, volumes)
 
   function handleDelete(e: MouseEvent) {
     e.stopPropagation()

@@ -1,6 +1,7 @@
 import { estimateSeriesVolumes } from '../api/bookLookup'
-import { getAllSeries, saveSeries, getBackupMeta, saveBackupMeta } from '../db'
+import { getAllSeries, getAllVolumes, saveSeries, getBackupMeta, saveBackupMeta } from '../db'
 import type { Series } from '../types'
+import { isValidEstimatedTotal } from './volumeEstimate'
 
 // With collections in the hundreds-to-thousands of series, refreshing every
 // series on every app open would mean a burst of hundreds of requests against
@@ -8,6 +9,12 @@ import type { Series } from '../types'
 // last check is older than this get re-checked at all, oldest-checked first,
 // so the load spreads out across app opens over time instead of spiking.
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+// Shorter cooldown used only for the self-heal path below - long enough that
+// a series NDL genuinely has no usable record for isn't hammered on every
+// app open/retrigger forever, short enough that a stale bad value (e.g. the
+// old 0-count bug) gets fixed within the hour instead of waiting out the
+// full 6h cooldown.
+const SELF_HEAL_RECHECK_INTERVAL_MS = 30 * 60 * 1000
 // At most this many requests in flight at once, paced by DELAY_BETWEEN...
 // below - keeps this a "gentle background trickle" against NDL rather than a
 // burst, regardless of how many series are due for a check.
@@ -27,34 +34,60 @@ export interface VolumeCheckCallbacks {
 // proper queue/lock, since only one cycle needs to ever be active at a time.
 let running = false
 
-// One-time, per-device migration: a past version of estimateSeriesVolumes
-// could match tie-in material (character books, novelizations, ...) instead
-// of the series itself and cache its reading as Series.kanaReading, e.g.
-// sorting "BLEACH" under "ア" instead of "ブ". That's now filtered out, but a
-// contaminated reading already saved is never revisited by the normal check
-// below (kanaReadingSource !== 'isbn' is the only gate on overwriting it,
-// and lastVolumeCheckAt is already recent from the run that cached it) -
-// this forces exactly those series back into the "due" pool once so they
-// get re-verified against the fixed matching logic right away instead of
-// waiting out their existing 6h cooldown.
-async function runKanaReadingMigrationOnce(): Promise<void> {
+// Bump whenever a change to estimateSeriesVolumes' matching/parsing logic
+// (or how a caller interprets its result) could make an already-cached
+// estimatedTotalVolumeCount/kanaReading wrong. See runEstimateAlgoMigration
+// and BackupMeta.appliedEstimateAlgoVersion.
+//   1 - kana-reading contamination fix (tie-in material matched as the
+//       series itself, e.g. BLEACH sorted under "ア" instead of "ブ").
+//   2 - totalVolumeCount regex fix for full-width digits, "その1" counters,
+//       and arc-name-suffixed dcndl:volume labels (BLEACH/月曜日のたわわ
+//       stuck at 0).
+const ESTIMATE_ALGO_VERSION = 2
+
+// One-time-per-version, per-device migration: forces every series back into
+// the "due" pool once after an algorithm fix, bypassing the normal 6h
+// cooldown, so already-cached bad values (a wrong kanaReading, or a
+// totalVolumeCount stuck at 0) get re-verified right away instead of sitting
+// wrong for up to 6h after the app updates - or, since lastVolumeCheckAt is
+// already recent from the run that cached the bad value, indefinitely.
+async function runEstimateAlgoMigration(): Promise<void> {
   const meta = await getBackupMeta()
-  if (meta.kanaMigrationDoneAt) return
+  if ((meta.appliedEstimateAlgoVersion ?? 0) >= ESTIMATE_ALGO_VERSION) return
   const all = await getAllSeries()
-  const affected = all.filter((s) => s.kanaReadingSource !== 'isbn')
-  await Promise.all(affected.map((s) => saveSeries({ ...s, lastVolumeCheckAt: undefined })))
-  await saveBackupMeta({ ...meta, kanaMigrationDoneAt: Date.now() })
+  await Promise.all(all.map((s) => saveSeries({ ...s, lastVolumeCheckAt: undefined })))
+  await saveBackupMeta({ ...meta, appliedEstimateAlgoVersion: ESTIMATE_ALGO_VERSION })
 }
 
 export async function runBackgroundVolumeCheck(callbacks: VolumeCheckCallbacks = {}): Promise<void> {
   if (running) return
   running = true
   try {
-    await runKanaReadingMigrationOnce()
-    const all = await getAllSeries()
+    await runEstimateAlgoMigration()
+    const [all, volumes] = await Promise.all([getAllSeries(), getAllVolumes()])
+    const ownedMaxBySeriesId = new Map<string, number>()
+    for (const v of volumes) {
+      ownedMaxBySeriesId.set(v.seriesId, Math.max(ownedMaxBySeriesId.get(v.seriesId) ?? 0, v.volumeNumber))
+    }
     const now = Date.now()
     const stale = all
-      .filter((s) => !s.lastVolumeCheckAt || now - s.lastVolumeCheckAt >= RECHECK_INTERVAL_MS)
+      .filter((s) => {
+        if (!s.lastVolumeCheckAt || now - s.lastVolumeCheckAt >= RECHECK_INTERVAL_MS) return true
+        // Self-heal: an already-impossible cached estimate (0, or lower than
+        // a volume number actually owned) must not sit wrong until the next
+        // full cooldown - see isValidEstimatedTotal. Gated on the shorter
+        // SELF_HEAL_RECHECK_INTERVAL_MS rather than retried unconditionally,
+        // so a series NDL genuinely has no record for doesn't get hit on
+        // every single cycle forever.
+        if (
+          now - (s.lastVolumeCheckAt ?? 0) >= SELF_HEAL_RECHECK_INTERVAL_MS &&
+          s.estimatedTotalVolumeCount !== undefined &&
+          !isValidEstimatedTotal(s.estimatedTotalVolumeCount, ownedMaxBySeriesId.get(s.id) ?? 0)
+        ) {
+          return true
+        }
+        return false
+      })
       .sort((a, b) => (a.lastVolumeCheckAt ?? 0) - (b.lastVolumeCheckAt ?? 0))
 
     if (stale.length === 0) return

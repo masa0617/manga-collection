@@ -44,16 +44,15 @@ export default function WishlistScreen({ items, onSelectItem, onDeleteItem, onAd
               key={item.id}
               onClick={editMode ? undefined : () => onSelectItem(item.id)}
             >
-              <span className="series-row__name">{item.title}</span>
-              <span className="series-row__actions">
-                {editMode ? (
-                  <button className="series-row__delete" onClick={(e) => handleDelete(e, item)} aria-label="削除">
-                    ×
-                  </button>
-                ) : (
-                  item.author && <span className="series-row__count">{item.author}</span>
-                )}
+              <span className="wishlist-row__text">
+                <span className="wishlist-row__title">{item.title}</span>
+                {item.author && <span className="wishlist-row__author">{' '}{item.author}</span>}
               </span>
+              {editMode && (
+                <button className="series-row__delete" onClick={(e) => handleDelete(e, item)} aria-label="削除">
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </div>
