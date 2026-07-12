@@ -799,3 +799,44 @@ body {
   align-self: center;
   margin-top: 4px;
 }
+
+/* Wishlist detail display mode: cover centered on top, text stacked below -
+   distinct from .detail-info (owned-collection detail), which is a
+   side-by-side layout and must stay untouched. */
+.wishlist-detail-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.wishlist-detail-view__cover {
+  width: 160px;
+  aspect-ratio: 3 / 4.2;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+}
+
+.wishlist-detail-view__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wishlist-detail-view__text {
+  width: 100%;
+}
+
+.wishlist-detail-view__text h1 {
+  font-size: 1.2rem;
+  margin: 0 0 4px;
+}
+
+.wishlist-detail-view .form-actions {
+  width: 100%;
+}

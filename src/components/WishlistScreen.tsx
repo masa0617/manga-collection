@@ -14,7 +14,9 @@ interface Props {
 export default function WishlistScreen({ items, onSelectItem, onDeleteItem, onAdd }: Props) {
   const [editMode, setEditMode] = useState(false)
 
-  const sorted = [...items].sort((a, b) => compareByKana({ name: a.title }, { name: b.title }))
+  const sorted = [...items].sort((a, b) =>
+    compareByKana({ name: a.title, kanaReading: a.kanaReading }, { name: b.title, kanaReading: b.kanaReading }),
+  )
 
   function handleDelete(e: MouseEvent, item: WishlistItem) {
     e.stopPropagation()

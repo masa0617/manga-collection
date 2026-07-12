@@ -32,7 +32,7 @@ export default function CoverPicker({ onPick }: Props) {
 
   if (!open) {
     return (
-      <button className="link-button" onClick={() => setOpen(true)}>
+      <button type="button" className="link-button" onClick={() => setOpen(true)}>
         表紙を変更
       </button>
     )
@@ -40,7 +40,7 @@ export default function CoverPicker({ onPick }: Props) {
 
   return (
     <div className="cover-picker">
-      <button className="button button--ghost" onClick={() => fileInputRef.current?.click()}>
+      <button type="button" className="button button--ghost" onClick={() => fileInputRef.current?.click()}>
         カメラロールから選択
       </button>
       <input
@@ -65,7 +65,7 @@ export default function CoverPicker({ onPick }: Props) {
           onBlur={handleUrlSubmit}
         />
       </div>
-      <button className="link-button" onClick={() => setOpen(false)}>
+      <button type="button" className="link-button" onClick={() => setOpen(false)}>
         キャンセル
       </button>
     </div>

@@ -55,6 +55,16 @@ export interface WishlistItem {
   magazine?: string
   coverImageUrl?: string
   createdAt: number
+  // Reading (katakana) used to sort this item in gojuuon (50-on) order,
+  // captured opportunistically from NDL Search the same way as
+  // Series.kanaReading - see wishlistKanaScheduler. Left unset when no
+  // lookup has found one yet, in which case sorting falls back to the
+  // title itself.
+  kanaReading?: string
+  // When the background kana-reading check last attempted (successfully or
+  // not) to resolve kanaReading for this item - drives the check queue's
+  // cooldown the same way Series.lastVolumeCheckAt does.
+  lastKanaCheckAt?: number
 }
 
 export interface Volume {

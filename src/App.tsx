@@ -22,6 +22,7 @@ import {
 } from './db'
 import { shouldPromptBackup, shareOrDownloadJson } from './utils/backup'
 import { runBackgroundVolumeCheck } from './utils/volumeCheckScheduler'
+import { runBackgroundWishlistKanaCheck } from './utils/wishlistKanaScheduler'
 import type { Series, Volume, BackupMeta, WishlistItem } from './types'
 
 // While the app stays open, re-trigger a check cycle on this interval so a
@@ -106,6 +107,22 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
+  // Same idea as the volume check above, but for wishlist items' kana
+  // reading (see wishlistKanaScheduler) - keeps the always-on 50-on sort in
+  // WishlistScreen accurate as new items get added.
+  useEffect(() => {
+    function checkNow() {
+      runBackgroundWishlistKanaCheck({
+        onItemUpdated: (updated) => {
+          setWishlistItems((prev) => prev.map((w) => (w.id === updated.id ? updated : w)))
+        },
+      })
+    }
+    checkNow()
+    const interval = setInterval(checkNow, VOLUME_CHECK_RETRIGGER_MS)
+    return () => clearInterval(interval)
+  }, [])
+
   // Push a real history entry per screen so the browser's own back gesture
   // (iOS Safari's edge swipe, Android back button, desktop back button) can
   // navigate the app instead of only our in-app "戻る" buttons.
@@ -178,7 +195,11 @@ export default function App() {
   async function handleSaveWishlistItem(item: WishlistItem) {
     await saveWishlistItem(item)
     await refresh()
-    goBack()
+    // Adding a brand-new item (no selected id yet) still returns to the
+    // list, same as before. Editing an existing item stays on the detail
+    // screen, which switches itself back to display mode - see
+    // WishlistFormScreen.
+    if (!selectedWishlistItemId) goBack()
   }
 
   async function handleDeleteWishlistItem(id: string) {
