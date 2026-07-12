@@ -6,6 +6,7 @@ import BackupBanner from './components/BackupBanner'
 import BottomTabBar, { type MainTab } from './components/BottomTabBar'
 import WishlistScreen from './components/WishlistScreen'
 import WishlistFormScreen from './components/WishlistFormScreen'
+import SettingsScreen from './components/SettingsScreen'
 import {
   getAllSeries,
   getAllVolumes,
@@ -19,11 +20,14 @@ import {
   getAllWishlistItems,
   saveWishlistItem,
   deleteWishlistItem,
+  replaceAllData,
+  mergeAllData,
+  type MergeResult,
 } from './db'
 import { shouldPromptBackup, shareOrDownloadJson } from './utils/backup'
 import { runBackgroundVolumeCheck } from './utils/volumeCheckScheduler'
 import { runBackgroundWishlistKanaCheck } from './utils/wishlistKanaScheduler'
-import type { Series, Volume, BackupMeta, WishlistItem } from './types'
+import type { Series, Volume, BackupMeta, WishlistItem, BackupExport } from './types'
 
 // While the app stays open, re-trigger a check cycle on this interval so a
 // long-lived session keeps working through the backlog instead of only
@@ -31,7 +35,7 @@ import type { Series, Volume, BackupMeta, WishlistItem } from './types'
 // for a recheck - see volumeCheckScheduler).
 const VOLUME_CHECK_RETRIGGER_MS = 10 * 60 * 1000
 
-type View = 'home' | 'detail' | 'add' | 'wishlist' | 'wishlistForm'
+type View = 'home' | 'detail' | 'add' | 'wishlist' | 'wishlistForm' | 'settings'
 
 interface HistoryState {
   view: View
@@ -47,7 +51,8 @@ function readHistoryState(state: unknown): HistoryState {
       s.view === 'add' ||
       s.view === 'home' ||
       s.view === 'wishlist' ||
-      s.view === 'wishlistForm'
+      s.view === 'wishlistForm' ||
+      s.view === 'settings'
     ) {
       return { view: s.view, seriesId: s.seriesId ?? null, wishlistItemId: s.wishlistItemId ?? null }
     }
@@ -179,6 +184,21 @@ export default function App() {
     await refresh()
   }
 
+  async function handleImportBackup(
+    data: BackupExport,
+    mode: 'merge' | 'replace',
+  ): Promise<MergeResult | void> {
+    const payload = { series: data.series, volumes: data.volumes, wishlist: data.wishlist }
+    if (mode === 'replace') {
+      await replaceAllData(payload)
+      await refresh()
+      return
+    }
+    const result = await mergeAllData(payload)
+    await refresh()
+    return result
+  }
+
   async function handleDeleteVolume(volumeId: string) {
     await deleteVolume(volumeId)
     await refresh()
@@ -271,6 +291,7 @@ export default function App() {
           onSelectSeries={(id) => navigate('detail', id)}
           onDeleteSeries={handleDeleteSeries}
           onAdd={() => navigate('add', null)}
+          onOpenSettings={() => navigate('settings')}
         />
       )}
 
@@ -313,6 +334,15 @@ export default function App() {
           onCancel={goBack}
           onSave={handleSaveWishlistItem}
           onConvertToSeries={handleConvertWishlistItemToSeries}
+        />
+      )}
+
+      {view === 'settings' && (
+        <SettingsScreen
+          onBack={goBack}
+          onExport={handleBackup}
+          onImport={handleImportBackup}
+          lastBackupAt={backupMeta?.lastBackupAt ?? null}
         />
       )}
 

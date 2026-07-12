@@ -15,6 +15,7 @@ interface Props {
   onSelectSeries: (id: string) => void
   onDeleteSeries: (id: string) => void
   onAdd: () => void
+  onOpenSettings: () => void
 }
 
 function latestActivityAt(volumes: Volume[]): number {
@@ -31,6 +32,7 @@ export default function HomeScreen({
   onSelectSeries,
   onDeleteSeries,
   onAdd,
+  onOpenSettings,
 }: Props) {
   const [editMode, setEditMode] = useState(false)
 
@@ -61,6 +63,9 @@ export default function HomeScreen({
               {editMode ? '完了' : '編集'}
             </button>
           )}
+          <button className="link-button" onClick={onOpenSettings} aria-label="設定">
+            ⚙
+          </button>
         </div>
       </header>
 

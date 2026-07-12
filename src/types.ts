@@ -96,6 +96,19 @@ export interface BackupMeta {
   appliedEstimateAlgoVersion?: number
 }
 
+// Full-app JSON snapshot produced by exportAllData / shareOrDownloadJson and
+// consumed by the backup-restore flow (see backupImport.ts). schemaVersion
+// lets a future data-shape change refuse to import an incompatible file
+// instead of silently corrupting the local DB - see
+// backupImport.CURRENT_BACKUP_SCHEMA_VERSION.
+export interface BackupExport {
+  schemaVersion: number
+  series: Series[]
+  volumes: Volume[]
+  wishlist: WishlistItem[]
+  exportedAt: number
+}
+
 export interface BookInfo {
   title?: string
   author?: string

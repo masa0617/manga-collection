@@ -840,3 +840,40 @@ body {
 .wishlist-detail-view .form-actions {
   width: 100%;
 }
+
+/* Settings screen */
+.settings-section {
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-section__title {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.settings-section__desc {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.settings-radio-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.settings-message--success {
+  color: var(--color-accent-dark);
+  font-size: 0.85rem;
+}

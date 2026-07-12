@@ -1,6 +1,12 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { Series, Volume, BackupMeta, WishlistItem } from './types'
+import type { Series, Volume, BackupMeta, WishlistItem, BackupExport } from './types'
 import { normalizeForMatch } from './utils/titleParsing'
+
+// Bump whenever a change to Series/Volume/WishlistItem's shape could make an
+// older exported JSON incompatible with what restoreAllData/mergeAllData
+// expect - see backupImport.parseBackupFile, which refuses to import a file
+// whose schemaVersion is newer than this.
+export const BACKUP_SCHEMA_VERSION = 1
 
 interface MangaDB extends DBSchema {
   series: {
@@ -146,12 +152,69 @@ export async function deleteWishlistItem(id: string): Promise<void> {
   await db.delete('wishlist', id)
 }
 
-export async function exportAllData(): Promise<{
+export async function exportAllData(): Promise<BackupExport> {
+  const [series, volumes, wishlist] = await Promise.all([getAllSeries(), getAllVolumes(), getAllWishlistItems()])
+  return { schemaVersion: BACKUP_SCHEMA_VERSION, series, volumes, wishlist, exportedAt: Date.now() }
+}
+
+interface RestoreData {
   series: Series[]
   volumes: Volume[]
   wishlist: WishlistItem[]
-  exportedAt: number
-}> {
-  const [series, volumes, wishlist] = await Promise.all([getAllSeries(), getAllVolumes(), getAllWishlistItems()])
-  return { series, volumes, wishlist, exportedAt: Date.now() }
+}
+
+// Restore mode 1/2: wipes the owned collection and wishlist entirely and
+// replaces them with exactly what the backup file contains. Deliberately
+// leaves the `meta` store untouched - the backup-reminder cadence
+// (BackupMeta.lastBackupAt/addedSinceBackup) isn't part of what a user
+// means by "restore my data".
+export async function replaceAllData(data: RestoreData): Promise<void> {
+  const db = await getDb()
+  const tx = db.transaction(['series', 'volumes', 'wishlist'], 'readwrite')
+  await tx.objectStore('series').clear()
+  await tx.objectStore('volumes').clear()
+  await tx.objectStore('wishlist').clear()
+  await Promise.all([
+    ...data.series.map((s) => tx.objectStore('series').put(s)),
+    ...data.volumes.map((v) => tx.objectStore('volumes').put(v)),
+    ...data.wishlist.map((w) => tx.objectStore('wishlist').put(w)),
+  ])
+  await tx.done
+}
+
+export interface MergeResult {
+  addedSeries: number
+  addedVolumes: number
+  addedWishlist: number
+}
+
+// Restore mode 2/2: additive only. An id already present locally is assumed
+// to be the same record (ids are generated once via crypto.randomUUID and
+// carried through every export since), so it's left alone rather than
+// overwritten - this keeps merge simple and side-effect-free instead of
+// having to reconcile which of two diverged copies of the same id "wins".
+export async function mergeAllData(data: RestoreData): Promise<MergeResult> {
+  const db = await getDb()
+  const [existingSeries, existingVolumes, existingWishlist] = await Promise.all([
+    db.getAll('series'),
+    db.getAll('volumes'),
+    db.getAll('wishlist'),
+  ])
+  const existingSeriesIds = new Set(existingSeries.map((s) => s.id))
+  const existingVolumeIds = new Set(existingVolumes.map((v) => v.id))
+  const existingWishlistIds = new Set(existingWishlist.map((w) => w.id))
+
+  const newSeries = data.series.filter((s) => !existingSeriesIds.has(s.id))
+  const newVolumes = data.volumes.filter((v) => !existingVolumeIds.has(v.id))
+  const newWishlist = data.wishlist.filter((w) => !existingWishlistIds.has(w.id))
+
+  const tx = db.transaction(['series', 'volumes', 'wishlist'], 'readwrite')
+  await Promise.all([
+    ...newSeries.map((s) => tx.objectStore('series').put(s)),
+    ...newVolumes.map((v) => tx.objectStore('volumes').put(v)),
+    ...newWishlist.map((w) => tx.objectStore('wishlist').put(w)),
+  ])
+  await tx.done
+
+  return { addedSeries: newSeries.length, addedVolumes: newVolumes.length, addedWishlist: newWishlist.length }
 }
