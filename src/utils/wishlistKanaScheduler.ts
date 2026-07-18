@@ -1,84 +1,59 @@
-import { estimateSeriesVolumes } from '../api/bookLookup'
-import { getAllWishlistItems, saveWishlistItem } from '../db'
+import { generateKanaReading } from './kanaGenerator'
+import { getAllWishlistItems, saveWishlistItem, getBackupMeta, saveBackupMeta } from '../db'
 import type { WishlistItem } from '../types'
-
-// Mirrors volumeCheckScheduler's cooldown/concurrency approach, reused here
-// so wishlist items can get a real kanaReading (see titleParsing.compareByKana)
-// without hammering NDL Search on every app open. Only kanaReading is fetched
-// here - wishlist items have no volume count to estimate.
-const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
-const CONCURRENCY = 2
-const DELAY_BETWEEN_REQUESTS_MS = 500
-const MAX_CYCLE_DURATION_MS = 3 * 60 * 1000
 
 export interface WishlistKanaCheckCallbacks {
   onItemUpdated?: (item: WishlistItem) => void
 }
 
+// Bump whenever a change to generateKanaReading's logic could make an
+// already-cached kanaReading wrong or newly resolvable for existing
+// wishlist items - forces every non-manual item's kanaReading back to
+// "unresolved" once so the next check regenerates it immediately instead of
+// sitting on a stale/wrong value forever. Mirrors
+// volumeCheckScheduler.ESTIMATE_ALGO_VERSION.
+//   1 - switch from NDL text-search (unreliable for hand-typed titles with
+//       no ISBN to corroborate a fuzzy match - see the wishlist kana sort
+//       investigation) to on-device kuromoji-based generation.
+const WISHLIST_KANA_ALGO_VERSION = 1
+
+async function runKanaAlgoMigration(): Promise<void> {
+  const meta = await getBackupMeta()
+  if ((meta.appliedWishlistKanaAlgoVersion ?? 0) >= WISHLIST_KANA_ALGO_VERSION) return
+  const all = await getAllWishlistItems()
+  await Promise.all(
+    all
+      .filter((item) => !item.kanaReadingIsManual && item.kanaReading)
+      .map((item) => saveWishlistItem({ ...item, kanaReading: undefined })),
+  )
+  await saveBackupMeta({ ...meta, appliedWishlistKanaAlgoVersion: WISHLIST_KANA_ALGO_VERSION })
+}
+
+// Guards against overlapping runs (e.g. effects re-running), not a proper
+// queue/lock, since only one run needs to ever be active at a time.
 let running = false
 
+// Generation is a local, deterministic computation (no network, no rate
+// limit, no "maybe it'll work later" flakiness) - unlike the NDL-based
+// volumeCheckScheduler this replaced, there's no cooldown/pacing needed.
+// A title that fails to resolve will fail the same way every time, so it's
+// simply left alone (falls back to the title-text tail-group sort rule in
+// titleParsing.ts) rather than retried on a timer.
 export async function runBackgroundWishlistKanaCheck(callbacks: WishlistKanaCheckCallbacks = {}): Promise<void> {
   if (running) return
   running = true
   try {
+    await runKanaAlgoMigration()
     const all = await getAllWishlistItems()
-    const now = Date.now()
-    // Once a reading is found it's kept forever (unlike Series, there's no
-    // higher-confidence per-ISBN lookup for a wishlist item to eventually
-    // upgrade to) - only items still missing one are ever re-checked, and
-    // only after the cooldown so a title NDL genuinely has no record for
-    // isn't retried every single cycle.
-    const stale = all
-      .filter((item) => !item.kanaReading && (!item.lastKanaCheckAt || now - item.lastKanaCheckAt >= RECHECK_INTERVAL_MS))
-      .sort((a, b) => (a.lastKanaCheckAt ?? 0) - (b.lastKanaCheckAt ?? 0))
-
-    if (stale.length === 0) return
-
-    const deadline = Date.now() + MAX_CYCLE_DURATION_MS
-    let nextIndex = 0
-
-    async function worker() {
-      while (nextIndex < stale.length && Date.now() < deadline) {
-        const item = stale[nextIndex++]
-        await checkOne(item, callbacks)
-        await delay(DELAY_BETWEEN_REQUESTS_MS)
-      }
+    const pending = all.filter((item) => !item.kanaReadingIsManual && !item.kanaReading)
+    for (const item of pending) {
+      const reading = await generateKanaReading(item.title)
+      if (!reading) continue
+      const updated: WishlistItem = { ...item, kanaReading: reading }
+      await saveWishlistItem(updated)
+      callbacks.onItemUpdated?.(updated)
     }
-
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, stale.length) }, worker))
   } finally {
     running = false
   }
-}
-
-async function checkOne(item: WishlistItem, callbacks: WishlistKanaCheckCallbacks): Promise<void> {
-  const attemptedAt = Date.now()
-  // A lookup failure must never surface anywhere in the UI - it should only
-  // mean this item's sort position stays as-is (falls back to the title
-  // itself), not that anything else breaks. Still record the attempt so a
-  // persistently-failing item isn't retried every single app open.
-  try {
-    const estimate = await estimateSeriesVolumes(item.title, item.author)
-    const updated: WishlistItem = {
-      ...item,
-      lastKanaCheckAt: attemptedAt,
-      ...(estimate?.titleReading ? { kanaReading: estimate.titleReading } : {}),
-    }
-    await saveWishlistItem(updated)
-    callbacks.onItemUpdated?.(updated)
-  } catch (err) {
-    console.error(err)
-    try {
-      const updated: WishlistItem = { ...item, lastKanaCheckAt: attemptedAt }
-      await saveWishlistItem(updated)
-      callbacks.onItemUpdated?.(updated)
-    } catch {
-      // IndexedDB write failure here shouldn't take down the rest of the
-      // queue either - this item just gets retried sooner than intended.
-    }
-  }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

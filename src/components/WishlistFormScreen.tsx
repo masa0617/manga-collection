@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { WishlistItem } from '../types'
 import CoverPicker from './CoverPicker'
+import { generateKanaReading } from '../utils/kanaGenerator'
 
 interface Props {
   item: WishlistItem | null
@@ -21,7 +22,9 @@ export default function WishlistFormScreen({ item, onSave, onCancel, onConvertTo
   const [publisher, setPublisher] = useState(item?.publisher ?? '')
   const [magazine, setMagazine] = useState(item?.magazine ?? '')
   const [coverImageUrl, setCoverImageUrl] = useState(item?.coverImageUrl ?? '')
+  const [kanaReading, setKanaReading] = useState(item?.kanaReading ?? '')
   const [message, setMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   function startEditing() {
     setTitle(item?.title ?? '')
@@ -29,28 +32,43 @@ export default function WishlistFormScreen({ item, onSave, onCancel, onConvertTo
     setPublisher(item?.publisher ?? '')
     setMagazine(item?.magazine ?? '')
     setCoverImageUrl(item?.coverImageUrl ?? '')
+    setKanaReading(item?.kanaReading ?? '')
     setMessage(null)
     setEditing(true)
   }
 
-  function handleSubmit(e: FormEvent) {
+  // Left blank, the reading is (re)generated on-device from the title (see
+  // kanaGenerator.ts) - typing a value here always wins over that and is
+  // saved as a manual correction (kanaReadingIsManual) that future
+  // generation passes never overwrite, for titles the generator gets wrong
+  // (proper-noun readings, gikun wordplay, etc. - see kanaGenerator.test.ts).
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!title.trim()) {
       setMessage('タイトルを入力してください。')
       return
     }
-    onSave({
-      id: item?.id ?? crypto.randomUUID(),
-      title: title.trim(),
-      author: author.trim() || undefined,
-      publisher: publisher.trim() || undefined,
-      magazine: magazine.trim() || undefined,
-      coverImageUrl: coverImageUrl || undefined,
-      createdAt: item?.createdAt ?? Date.now(),
-      kanaReading: item?.kanaReading,
-      lastKanaCheckAt: item?.lastKanaCheckAt,
-    })
-    if (item) setEditing(false)
+    const trimmedTitle = title.trim()
+    const trimmedKana = kanaReading.trim()
+    const manual = trimmedKana !== ''
+    setSaving(true)
+    try {
+      const finalKana = manual ? trimmedKana : ((await generateKanaReading(trimmedTitle)) ?? undefined)
+      onSave({
+        id: item?.id ?? crypto.randomUUID(),
+        title: trimmedTitle,
+        author: author.trim() || undefined,
+        publisher: publisher.trim() || undefined,
+        magazine: magazine.trim() || undefined,
+        coverImageUrl: coverImageUrl || undefined,
+        createdAt: item?.createdAt ?? Date.now(),
+        kanaReading: finalKana,
+        kanaReadingIsManual: manual,
+      })
+      if (item) setEditing(false)
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Discards in-progress edits and returns to display mode for an existing
@@ -69,6 +87,7 @@ export default function WishlistFormScreen({ item, onSave, onCancel, onConvertTo
     setPublisher(item.publisher ?? '')
     setMagazine(item.magazine ?? '')
     setCoverImageUrl(item.coverImageUrl ?? '')
+    setKanaReading(item.kanaReading ?? '')
     setMessage(null)
     setEditing(false)
   }
@@ -125,10 +144,19 @@ export default function WishlistFormScreen({ item, onSave, onCancel, onConvertTo
             <input value={magazine} onChange={(e) => setMagazine(e.target.value)} placeholder="例: 週刊少年ジャンプ" />
           </div>
 
+          <div className="field-row">
+            <label>読み仮名</label>
+            <input
+              value={kanaReading}
+              onChange={(e) => setKanaReading(e.target.value)}
+              placeholder="空欄なら自動判定（例: クサナギセンセイワタメサレテイル）"
+            />
+          </div>
+
           {message && <p className="form-message">{message}</p>}
 
           <div className="form-actions">
-            <button type="submit" className="button button--primary">
+            <button type="submit" className="button button--primary" disabled={saving}>
               保存する
             </button>
             <button type="button" className="button button--ghost" onClick={handleCancelEdit}>

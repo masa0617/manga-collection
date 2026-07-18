@@ -2,6 +2,7 @@ import { estimateSeriesVolumes } from '../api/bookLookup'
 import { getAllSeries, getAllVolumes, saveSeries, getBackupMeta, saveBackupMeta } from '../db'
 import type { Series } from '../types'
 import { isValidEstimatedTotal } from './volumeEstimate'
+import { generateKanaReading } from './kanaGenerator'
 
 // With collections in the hundreds-to-thousands of series, refreshing every
 // series on every app open would mean a burst of hundreds of requests against
@@ -43,7 +44,11 @@ let running = false
 //   2 - totalVolumeCount regex fix for full-width digits, "その1" counters,
 //       and arc-name-suffixed dcndl:volume labels (BLEACH/月曜日のたわわ
 //       stuck at 0).
-const ESTIMATE_ALGO_VERSION = 2
+//   3 - added an on-device kanaReading fallback (see kanaGenerator.ts) for
+//       series where neither an isbn nor an estimate lookup ever found a
+//       reading, so already-registered series stuck in the sort's "unknown
+//       reading" tail group get a shot at resolving immediately.
+const ESTIMATE_ALGO_VERSION = 3
 
 // One-time-per-version, per-device migration: forces every series back into
 // the "due" pool once after an algorithm fix, bypassing the normal 6h
@@ -137,19 +142,33 @@ async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promis
         ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
         : {}),
     }
-    await saveSeries(updated)
-    callbacks.onSeriesUpdated?.(updated)
+    const final = await withGeneratedKanaFallback(updated)
+    await saveSeries(final)
+    callbacks.onSeriesUpdated?.(final)
   } catch (err) {
     console.error(err)
     try {
       const updated: Series = { ...series, lastVolumeCheckAt: attemptedAt }
-      await saveSeries(updated)
-      callbacks.onSeriesUpdated?.(updated)
+      const final = await withGeneratedKanaFallback(updated)
+      await saveSeries(final)
+      callbacks.onSeriesUpdated?.(final)
     } catch {
       // IndexedDB write failure here shouldn't take down the rest of the
       // queue either - this series just gets retried sooner than intended.
     }
   }
+}
+
+// Last-resort fallback for a series still stuck with no reading after both
+// the isbn and estimate paths above have had their say - runs entirely
+// on-device (see kanaGenerator.ts) so it still has a shot even when NDL is
+// down/failing, unlike the two lookups it backs up. Never overrides an
+// existing kanaReading of any source - purely fills a gap.
+async function withGeneratedKanaFallback(series: Series): Promise<Series> {
+  if (series.kanaReading) return series
+  const generated = await generateKanaReading(series.name)
+  if (!generated) return series
+  return { ...series, kanaReading: generated, kanaReadingSource: 'generated' }
 }
 
 function delay(ms: number): Promise<void> {

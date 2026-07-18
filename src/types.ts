@@ -44,7 +44,9 @@ export interface Series {
   // anything else stays eligible to be re-verified and overwritten by a
   // later, better estimate (see volumeCheckScheduler's kana-reading
   // migration) instead of being stuck on a possibly-wrong value forever.
-  kanaReadingSource?: 'isbn' | 'estimate'
+  // 'generated' - a last-resort on-device reading (see kanaGenerator.ts)
+  // used only when neither an isbn nor an estimate lookup ever found one.
+  kanaReadingSource?: 'isbn' | 'estimate' | 'generated'
 }
 
 export interface WishlistItem {
@@ -55,16 +57,20 @@ export interface WishlistItem {
   magazine?: string
   coverImageUrl?: string
   createdAt: number
-  // Reading (katakana) used to sort this item in gojuuon (50-on) order,
-  // captured opportunistically from NDL Search the same way as
-  // Series.kanaReading - see wishlistKanaScheduler. Left unset when no
-  // lookup has found one yet, in which case sorting falls back to the
+  // Reading (katakana) used to sort this item in gojuuon (50-on) order.
+  // Generated on-device from the title itself (see kanaGenerator.ts,
+  // wishlistKanaScheduler) unless kanaReadingIsManual is set, in which case
+  // it's a user-entered correction (WishlistFormScreen) that's never
+  // overwritten by generation. Left unset when generation couldn't
+  // confidently resolve a reading, in which case sorting falls back to the
   // title itself.
   kanaReading?: string
-  // When the background kana-reading check last attempted (successfully or
-  // not) to resolve kanaReading for this item - drives the check queue's
-  // cooldown the same way Series.lastVolumeCheckAt does.
-  lastKanaCheckAt?: number
+  // True when kanaReading was typed in directly via WishlistFormScreen
+  // rather than generated - takes priority over generation forever, since a
+  // manual correction (e.g. a title with wordplay/gikun kanaGenerator can't
+  // know about) should never be silently clobbered by a later auto-generate
+  // pass.
+  kanaReadingIsManual?: boolean
 }
 
 export interface Volume {
@@ -94,6 +100,11 @@ export interface BackupMeta {
   // incrementing counter instead of a one-off boolean flag per fix, so a
   // future correction only needs to bump the constant.
   appliedEstimateAlgoVersion?: number
+  // Same idea as appliedEstimateAlgoVersion but for the wishlist's kana
+  // reading generation (see WISHLIST_KANA_ALGO_VERSION in
+  // wishlistKanaScheduler) - lets a fix to generateKanaReading force every
+  // non-manual wishlist item's cached kanaReading to be regenerated once.
+  appliedWishlistKanaAlgoVersion?: number
 }
 
 // Full-app JSON snapshot produced by exportAllData / shareOrDownloadJson and

@@ -6,3 +6,7 @@ dist
 .claude/
 
 .vercel
+
+# Synced from node_modules/kuromoji/dict on every `npm install` - see
+# scripts/copy-kuromoji-dict.mjs and package.json's postinstall script.
+public/dict/

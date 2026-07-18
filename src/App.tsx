@@ -114,18 +114,16 @@ export default function App() {
 
   // Same idea as the volume check above, but for wishlist items' kana
   // reading (see wishlistKanaScheduler) - keeps the always-on 50-on sort in
-  // WishlistScreen accurate as new items get added.
+  // WishlistScreen accurate as new items get added. Generation is a local,
+  // deterministic computation (no network flakiness to retry on a timer -
+  // see wishlistKanaScheduler), so a single pass on mount is enough to
+  // backfill anything missing a reading (e.g. items restored from a backup).
   useEffect(() => {
-    function checkNow() {
-      runBackgroundWishlistKanaCheck({
-        onItemUpdated: (updated) => {
-          setWishlistItems((prev) => prev.map((w) => (w.id === updated.id ? updated : w)))
-        },
-      })
-    }
-    checkNow()
-    const interval = setInterval(checkNow, VOLUME_CHECK_RETRIGGER_MS)
-    return () => clearInterval(interval)
+    runBackgroundWishlistKanaCheck({
+      onItemUpdated: (updated) => {
+        setWishlistItems((prev) => prev.map((w) => (w.id === updated.id ? updated : w)))
+      },
+    })
   }, [])
 
   // Push a real history entry per screen so the browser's own back gesture
