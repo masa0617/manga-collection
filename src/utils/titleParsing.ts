@@ -135,12 +135,43 @@ function stripNonNumericParens(title: string): string {
     .trim()
 }
 
+// Bibliographic sources sometimes tack a responsibility-statement role label
+// onto a contributor's name instead of (or in addition to) reporting it as
+// a separate ONIX contributor role - e.g. "橘賢一 原作", "石田スイ／著" - not
+// part of the name itself, and with no separator this module already splits
+// on. Stripped from the end of each name fragment.
+//
+// Single-character labels (著/文/画/絵/編/訳) are only stripped when clearly
+// set off by a separator (space/slash/backslash, half- or full-width) or
+// parentheses - they're also common word-final characters in ordinary
+// Japanese given names (e.g. "山田文"), so stripping one bare, with no
+// separator at all, would silently truncate a real name. Multi-character
+// labels (作画/原作/etc.) are distinctive enough that a real name ending in
+// one - even glued on with no separator, as some catalog fields do - is
+// implausible, so those are also stripped bare.
+const SINGLE_CHAR_ROLE_LABELS = ['著', '文', '画', '絵', '編', '訳']
+const MULTI_CHAR_ROLE_LABELS = ['作画', '原作', '脚本', '監修', '構成', '原案', '編著', '漫画']
+const SEPARATED_ROLE_SUFFIX = new RegExp(
+  `(?:[\\s　/／\\\\＼]+[（(]?|[（(])(?:${[...SINGLE_CHAR_ROLE_LABELS, ...MULTI_CHAR_ROLE_LABELS].join('|')})[)）]?$`,
+)
+const BARE_MULTI_CHAR_ROLE_SUFFIX = new RegExp(`(?:${MULTI_CHAR_ROLE_LABELS.join('|')})$`)
+
+function stripRoleLabel(name: string): string {
+  return name.replace(SEPARATED_ROLE_SUFFIX, '').replace(BARE_MULTI_CHAR_ROLE_SUFFIX, '').trim()
+}
+
 // Both NDL's dc:creator and openBD's summary.author use catalog-style
 // "姓,名,生年-没年" entries, e.g. "尾田,栄一郎,1975-" or "尾田/栄一郎" (the
 // surname/given-name separator varies). Strip the birth/death year
-// fragment, then join the remaining name parts with no separator: "尾田栄一郎".
+// fragment and any trailing role label, then join the remaining name parts
+// with no separator: "尾田栄一郎".
 function formatCatalogPersonName(raw: string): string {
-  const withoutDates = raw.trim().replace(/[,，]?\s*\d{3,4}\s*-\s*\d{0,4}\s*\.?\s*$/, '')
+  // Role label first: it must see the string's true trailing edge before
+  // the "/" in the split below (also used as a surname/given-name
+  // separator, e.g. "尾田/栄一郎") can cut a "／著"-style suffix apart from
+  // what it's attached to.
+  const withoutRole = stripRoleLabel(raw.trim())
+  const withoutDates = withoutRole.replace(/[,，]?\s*\d{3,4}\s*-\s*\d{0,4}\s*\.?\s*$/, '')
   return withoutDates
     .split(/[,，/]/)
     .map((part) => part.trim())

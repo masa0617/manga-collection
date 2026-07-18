@@ -437,6 +437,31 @@ body {
   font-size: 0.85rem;
 }
 
+.series-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  flex-wrap: wrap;
+}
+
+.series-name-input {
+  flex: 1;
+  min-width: 120px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: inherit;
+  font-size: 1rem;
+}
+
+.link-button--inline {
+  margin-left: 4px;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
 .cover-picker {
   margin-top: 8px;
   display: flex;

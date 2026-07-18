@@ -4,6 +4,13 @@ import type { Series } from '../types'
 import { isValidEstimatedTotal } from './volumeEstimate'
 import { generateKanaReading } from './kanaGenerator'
 
+// A manual total is contradicted when it's set but doesn't cover what's
+// actually owned - see getDisplayTotalVolumeCount's display-time clamp for
+// the immediate half of this guarantee; this is the persisted half.
+function isManualTotalContradicted(series: Series, ownedMax: number): boolean {
+  return series.manualTotalVolumeCount !== undefined && series.manualTotalVolumeCount < ownedMax
+}
+
 // With collections in the hundreds-to-thousands of series, refreshing every
 // series on every app open would mean a burst of hundreds of requests against
 // a free public API each time the app is opened. Instead, only series whose
@@ -48,7 +55,12 @@ let running = false
 //       series where neither an isbn nor an estimate lookup ever found a
 //       reading, so already-registered series stuck in the sort's "unknown
 //       reading" tail group get a shot at resolving immediately.
-const ESTIMATE_ALGO_VERSION = 3
+//   4 - stricter non-canon-material exclusion (NDC classification + title
+//       keywords - fan books, novelizations, anime tie-ins) and
+//       author-corroborated matching in estimateSeriesVolumes, plus
+//       self-healing a manualTotalVolumeCount that's fallen below what's
+//       owned or below a fresh valid estimate.
+const ESTIMATE_ALGO_VERSION = 4
 
 // One-time-per-version, per-device migration: forces every series back into
 // the "due" pool once after an algorithm fix, bypassing the normal 6h
@@ -79,17 +91,18 @@ export async function runBackgroundVolumeCheck(callbacks: VolumeCheckCallbacks =
       .filter((s) => {
         if (!s.lastVolumeCheckAt || now - s.lastVolumeCheckAt >= RECHECK_INTERVAL_MS) return true
         // Self-heal: an already-impossible cached estimate (0, or lower than
-        // a volume number actually owned) must not sit wrong until the next
-        // full cooldown - see isValidEstimatedTotal. Gated on the shorter
-        // SELF_HEAL_RECHECK_INTERVAL_MS rather than retried unconditionally,
-        // so a series NDL genuinely has no record for doesn't get hit on
-        // every single cycle forever.
-        if (
-          now - (s.lastVolumeCheckAt ?? 0) >= SELF_HEAL_RECHECK_INTERVAL_MS &&
-          s.estimatedTotalVolumeCount !== undefined &&
-          !isValidEstimatedTotal(s.estimatedTotalVolumeCount, ownedMaxBySeriesId.get(s.id) ?? 0)
-        ) {
-          return true
+        // a volume number actually owned) or a contradicted manual total
+        // must not sit wrong until the next full cooldown - see
+        // isValidEstimatedTotal/isManualTotalContradicted. Gated on the
+        // shorter SELF_HEAL_RECHECK_INTERVAL_MS rather than retried
+        // unconditionally, so a series NDL genuinely has no record for
+        // doesn't get hit on every single cycle forever.
+        if (now - (s.lastVolumeCheckAt ?? 0) >= SELF_HEAL_RECHECK_INTERVAL_MS) {
+          const ownedMax = ownedMaxBySeriesId.get(s.id) ?? 0
+          if (s.estimatedTotalVolumeCount !== undefined && !isValidEstimatedTotal(s.estimatedTotalVolumeCount, ownedMax)) {
+            return true
+          }
+          if (isManualTotalContradicted(s, ownedMax)) return true
         }
         return false
       })
@@ -103,7 +116,7 @@ export async function runBackgroundVolumeCheck(callbacks: VolumeCheckCallbacks =
     async function worker() {
       while (nextIndex < stale.length && Date.now() < deadline) {
         const series = stale[nextIndex++]
-        await checkOne(series, callbacks)
+        await checkOne(series, ownedMaxBySeriesId.get(series.id) ?? 0, callbacks)
         await delay(DELAY_BETWEEN_REQUESTS_MS)
       }
     }
@@ -114,7 +127,7 @@ export async function runBackgroundVolumeCheck(callbacks: VolumeCheckCallbacks =
   }
 }
 
-async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promise<void> {
+async function checkOne(series: Series, ownedMax: number, callbacks: VolumeCheckCallbacks): Promise<void> {
   const attemptedAt = Date.now()
   // A lookup failure (network error, NDL outage, rate limiting, ...) must
   // never surface to the caller - it should only mean this series' badge/
@@ -142,14 +155,14 @@ async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promis
         ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
         : {}),
     }
-    const final = await withGeneratedKanaFallback(updated)
+    const final = withCorrectedManualTotal(await withGeneratedKanaFallback(updated), ownedMax, estimate?.totalVolumeCount)
     await saveSeries(final)
     callbacks.onSeriesUpdated?.(final)
   } catch (err) {
     console.error(err)
     try {
       const updated: Series = { ...series, lastVolumeCheckAt: attemptedAt }
-      const final = await withGeneratedKanaFallback(updated)
+      const final = withCorrectedManualTotal(await withGeneratedKanaFallback(updated), ownedMax)
       await saveSeries(final)
       callbacks.onSeriesUpdated?.(final)
     } catch {
@@ -157,6 +170,16 @@ async function checkOne(series: Series, callbacks: VolumeCheckCallbacks): Promis
       // queue either - this series just gets retried sooner than intended.
     }
   }
+}
+
+// Bumps a manual total up (never down - it's still the user's floor) when
+// it's fallen below what's actually owned, or below a freshly-found valid
+// estimate (e.g. a new volume was catalogued after the user set the manual
+// value). Never touches a series with no manual value set at all.
+function withCorrectedManualTotal(series: Series, ownedMax: number, freshEstimate?: number): Series {
+  if (series.manualTotalVolumeCount === undefined) return series
+  const corrected = Math.max(series.manualTotalVolumeCount, ownedMax, freshEstimate ?? 0)
+  return corrected === series.manualTotalVolumeCount ? series : { ...series, manualTotalVolumeCount: corrected }
 }
 
 // Last-resort fallback for a series still stuck with no reading after both

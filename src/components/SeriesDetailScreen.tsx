@@ -3,7 +3,7 @@ import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
 import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
 import { formatJapaneseDate } from '../utils/publishDate'
-import { getDisplayTotalVolumeCount } from '../utils/volumeEstimate'
+import { getDisplayTotalVolumeCount, getOwnedMaxVolume } from '../utils/volumeEstimate'
 import CoverPicker from './CoverPicker'
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   onDeleteVolume: (volumeId: string) => void
   onUpdateCover: (coverUrl: string) => void
   onUpdateTotalVolumeCount: (count: number | undefined) => void
+  onUpdateName: (name: string) => Promise<boolean>
 }
 
 export default function SeriesDetailScreen({
@@ -24,9 +25,13 @@ export default function SeriesDetailScreen({
   onDeleteVolume,
   onUpdateCover,
   onUpdateTotalVolumeCount,
+  onUpdateName,
 }: Props) {
   const [editingTotal, setEditingTotal] = useState(false)
   const [totalInput, setTotalInput] = useState('')
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
 
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const missing = getMissingVolumes(volumes.map((v) => v.volumeNumber))
@@ -41,6 +46,27 @@ export default function SeriesDetailScreen({
     setEditingTotal(true)
   }
 
+  function startEditingName() {
+    setNameInput(series.name)
+    setNameError(null)
+    setEditingName(true)
+  }
+
+  async function saveName() {
+    const trimmed = nameInput.trim()
+    if (!trimmed) return
+    if (trimmed === series.name) {
+      setEditingName(false)
+      return
+    }
+    const ok = await onUpdateName(trimmed)
+    if (ok) {
+      setEditingName(false)
+    } else {
+      setNameError('同じ名前のシリーズが既に存在します。')
+    }
+  }
+
   function saveTotal() {
     const trimmed = totalInput.trim()
     if (!trimmed) {
@@ -50,7 +76,10 @@ export default function SeriesDetailScreen({
     }
     const num = Number(trimmed)
     if (Number.isInteger(num) && num > 0) {
-      onUpdateTotalVolumeCount(num)
+      // Never lets a manual total go below what's actually owned - see
+      // getDisplayTotalVolumeCount's clamp for why this contradiction must
+      // never even be saveable, not just corrected later in the background.
+      onUpdateTotalVolumeCount(Math.max(num, getOwnedMaxVolume(volumes)))
       setEditingTotal(false)
     }
   }
@@ -72,10 +101,31 @@ export default function SeriesDetailScreen({
           )}
         </div>
         <div className="detail-info__text">
-          <h1>
-            {series.name}
-            {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
-          </h1>
+          {editingName ? (
+            <div className="series-name-row">
+              <input
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="シリーズ名"
+                className="series-name-input"
+              />
+              <button type="button" className="link-button" onClick={saveName}>
+                保存
+              </button>
+              <button type="button" className="link-button" onClick={() => setEditingName(false)}>
+                キャンセル
+              </button>
+              {nameError && <p className="form-message">{nameError}</p>}
+            </div>
+          ) : (
+            <h1>
+              {series.name}
+              {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
+              <button type="button" className="link-button link-button--inline" onClick={startEditingName}>
+                編集
+              </button>
+            </h1>
+          )}
           {series.author && <p className="detail-info__field">{series.author}</p>}
           {series.publisher && <p className="detail-info__field detail-info__field--muted">{series.publisher}</p>}
           {series.magazine && <p className="detail-info__field detail-info__field--muted">{series.magazine}</p>}

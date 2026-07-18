@@ -102,7 +102,7 @@ async function lookupGoogleBooks(isbn: string): Promise<BookInfo | null> {
   const v = item.volumeInfo ?? {}
   const info: BookInfo = {
     title: v.title ? toHalfWidth(v.title) : undefined,
-    author: Array.isArray(v.authors) ? v.authors.join('、') : undefined,
+    author: Array.isArray(v.authors) ? formatCatalogAuthors(v.authors) || undefined : undefined,
     publisher: v.publisher || undefined,
     coverImageUrl: toHttps(v.imageLinks?.thumbnail || v.imageLinks?.smallThumbnail || undefined),
     releaseDateISO: parsePublishDate(v.publishedDate),
@@ -143,6 +143,55 @@ function isDigitalOnlyRecord(item: Element): boolean {
   return categories.some((c) => c.includes('電子') || c.includes('デジタル'))
 }
 
+// NDC (Nippon Decimal Classification) codes clearly outside comics - a movie/
+// anime video release (778.x) or a prose novelization (913.x) - reported via
+// dc:subject xsi:type="dcndl:NDC10". This is a blocklist rather than an
+// allowlist requiring "starts with 726" (the comics range): plenty of
+// legitimate volume records simply lack an NDC10 value at all (e.g. brand
+// new preorder listings not yet fully catalogued), and requiring it present
+// would under-count a series by excluding those - the exact failure mode
+// this app must avoid (see isValidEstimatedTotal). Only rejects when the
+// classification is present *and* unambiguously wrong.
+const NON_MANGA_NDC_PREFIXES = ['913', '778']
+
+// Titles that are real NDL hits for the queried title+author but aren't a
+// main-series tankobon - official fan books/character books (which can
+// still carry a "726" NDC subclass, e.g. "726.101"), art books, film/anime
+// tie-ins, novelizations, "total volume" omnibus reissues. Checked against
+// the *parsed* series-name portion of the title (parseVolumeFromTitle
+// already stripped any trailing volume marker), so a legitimate volume
+// subtitle containing one of these words as a coincidence is vanishingly
+// unlikely in practice.
+const NON_CANON_TITLE_KEYWORDS = [
+  '公式ファンブック',
+  'ファンブック',
+  'イラスト集',
+  '画集',
+  '総集編',
+  '愛蔵版',
+  '傑作選',
+  'ガイドブック',
+  '設定資料集',
+  '設定資料',
+  'ノベライズ',
+  '小説版',
+  'アニメコミックス',
+  'キャラクターブック',
+  '記録集',
+]
+
+function isNonCanonicalRecord(item: Element, parsedSeriesName: string): boolean {
+  const categories = Array.from(item.getElementsByTagName('category')).map((el) => el.textContent?.trim() ?? '')
+  if (categories.some((c) => c.includes('映像資料'))) return true
+
+  const ndc10Values = Array.from(item.getElementsByTagName('dc:subject'))
+    .filter((el) => el.getAttribute('xsi:type') === 'dcndl:NDC10')
+    .map((el) => el.textContent?.trim() ?? '')
+  if (ndc10Values.some((ndc) => NON_MANGA_NDC_PREFIXES.some((prefix) => ndc.startsWith(prefix)))) return true
+
+  return NON_CANON_TITLE_KEYWORDS.some((kw) => parsedSeriesName.includes(kw))
+}
+
 // Best-effort total-volume-count estimate: searches NDL Search by title+
 // author (no API key required, unlike Google Books) and takes the highest
 // dcndl:volume number found across the results. Real NDL data is noisy -
@@ -153,6 +202,7 @@ function isDigitalOnlyRecord(item: Element): boolean {
 export async function estimateSeriesVolumes(seriesName: string, author?: string): Promise<SeriesVolumeEstimate | null> {
   const params = new URLSearchParams({ title: seriesName, cnt: '100' })
   if (author) params.set('creator', author)
+  const queryAuthorNormalized = author ? normalizeForMatch(author) : undefined
   const res = await fetchWithTimeout(`https://ndlsearch.ndl.go.jp/api/opensearch?${params.toString()}`, 6000)
   if (!res) return null
   const xmlText = await res.text().catch(() => null)
@@ -176,6 +226,11 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
 
     const title = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
     const parsedTitle = title ? parseVolumeFromTitle(toHalfWidth(title)) : null
+    if (parsedTitle?.seriesName && isNonCanonicalRecord(item, parsedTitle.seriesName)) continue
+    const recordCreators = Array.from(item.getElementsByTagName('dc:creator'))
+      .map((el) => el.textContent?.trim())
+      .filter((v): v is string => Boolean(v))
+    const recordAuthorNormalized = recordCreators.length ? normalizeForMatch(formatCatalogAuthors(recordCreators)) : undefined
     // NDL's title+author text search is loose enough to also surface tie-in
     // material - character books, bootleg/art books, movie novelizations -
     // that share the queried title/author but aren't the series itself
@@ -184,7 +239,16 @@ export async function estimateSeriesVolumes(seriesName: string, author?: string)
     // series name plausibly matches the query before trusting a record's
     // reading/volume number keeps that noise out - previously it could get
     // read as the real series, e.g. sorting BLEACH under "ア" instead of "ブ".
-    if (!parsedTitle?.seriesName || !isLikelySameSeries(normalizeForMatch(parsedTitle.seriesName), queryNormalized)) {
+    // A matching author corroborates a looser title match (see
+    // isLikelySameSeries) - important for long-running series whose
+    // subtitle/edition wording drifted a lot, or special editions.
+    if (
+      !parsedTitle?.seriesName ||
+      !isLikelySameSeries(normalizeForMatch(parsedTitle.seriesName), queryNormalized, {
+        candidateAuthor: recordAuthorNormalized,
+        knownAuthor: queryAuthorNormalized,
+      })
+    ) {
       continue
     }
 

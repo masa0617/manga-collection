@@ -59,10 +59,16 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   // ruby fragments) via isLikelySameSeries rather than requiring exact
   // equality, since that noise is exactly what used to make the learned
   // title silently not apply.
-  function resolveKnownSeriesName(candidate: string, candidateIsbn?: string): string {
+  function resolveKnownSeriesName(candidate: string, candidateIsbn?: string, candidateAuthor?: string): string {
     const candidateNormalized = normalizeForMatch(candidate)
+    const candidateAuthorNormalized = candidateAuthor ? normalizeForMatch(candidateAuthor) : undefined
     const match = seriesList.find((s) =>
-      isLikelySameSeries(candidateNormalized, normalizeForMatch(s.name), candidateIsbn, seriesSampleIsbn[s.id]),
+      isLikelySameSeries(candidateNormalized, normalizeForMatch(s.name), {
+        candidateIsbn,
+        knownIsbn: seriesSampleIsbn[s.id],
+        candidateAuthor: candidateAuthorNormalized,
+        knownAuthor: s.author ? normalizeForMatch(s.author) : undefined,
+      }),
     )
     return match?.name ?? candidate
   }
@@ -76,7 +82,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     if (info) {
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(resolveKnownSeriesName(parsed.seriesName, detectedIsbn))
+        setSeriesName(resolveKnownSeriesName(parsed.seriesName, detectedIsbn, info.author))
         const vol = info.volumeNumber ?? parsed.volumeNumber
         if (vol !== null && vol !== undefined) setVolumeNumber(String(vol))
       }
@@ -104,7 +110,7 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       // about to replace by looking the ISBN up anyway.
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(resolveKnownSeriesName(parsed.seriesName, isbn))
+        setSeriesName(resolveKnownSeriesName(parsed.seriesName, isbn, info.author))
         const vol = info.volumeNumber ?? parsed.volumeNumber
         setVolumeNumber(vol !== null && vol !== undefined ? String(vol) : '')
       }
@@ -123,12 +129,29 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const num = Number(volumeNumber)
-    if (!seriesName.trim() || !num || num <= 0) {
-      setMessage('タイトルと巻数を正しく入力してください。')
+    // Integer-only: a fractional volumeNumber (a typo, or a mis-parsed
+    // label) silently breaks getMissingVolumes' gap detection downstream,
+    // since it can never satisfy the integer min..max sweep that checks
+    // ownership.
+    if (!seriesName.trim() || !num || num <= 0 || !Number.isInteger(num)) {
+      setMessage('タイトルと巻数(整数)を正しく入力してください。')
       return
     }
-    setSaving(true)
     let series = await findSeriesByName(seriesName.trim())
+    // A duplicate volumeNumber for the same series (double-scan, or two
+    // different ISBNs mis-parsed to the same number) would otherwise be
+    // saved silently and can mask a real gap in getMissingVolumes (the
+    // duplicate keeps min/max looking "complete"). Confirming instead of
+    // blocking outright still allows an intentional case (e.g. a reprint
+    // with a different ISBN the user genuinely wants both copies of).
+    if (series) {
+      const existingVolumes = await getAllVolumes()
+      const alreadyOwned = existingVolumes.some((v) => v.seriesId === series!.id && v.volumeNumber === num)
+      if (alreadyOwned && !confirm(`${num}巻は既に登録されています。それでも追加しますか？`)) {
+        return
+      }
+    }
+    setSaving(true)
     if (!series) {
       series = {
         id: crypto.randomUUID(),

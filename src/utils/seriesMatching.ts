@@ -32,20 +32,39 @@ const CORROBORATED_SIMILARITY_THRESHOLD = 0.7
 const MIN_COMPARABLE_LENGTH = 4
 const MIN_PREFIX_RATIO = 0.6
 
+export interface SeriesMatchCorroboration {
+  candidateIsbn?: string
+  knownIsbn?: string
+  // Both must already be normalized the same way as candidateNormalized/
+  // knownNormalized (see normalizeForMatch) - callers own that, this module
+  // only compares what it's given.
+  candidateAuthor?: string
+  knownAuthor?: string
+}
+
+// Same author on both sides is corroborating evidence for "same series"
+// independent of ISBN (e.g. a special edition/spin-off registered without a
+// scanned ISBN yet, or two ISBNs from different imprints for the same
+// series). A simple containment check tolerates one side listing extra
+// co-authors (original story + art) that the other doesn't.
+function authorsCorroborate(a?: string, b?: string): boolean {
+  if (!a || !b) return false
+  return a.includes(b) || b.includes(a)
+}
+
 /**
  * Whether a freshly-parsed candidate title likely refers to the same series
  * as an already-registered one, tolerating the residual noise (stray
- * subtitle/ruby fragments, punctuation) that title parsing can't always
- * fully strip. Both names must already be run through normalizeForMatch.
- * An ISBN publisher-code match on both sides relaxes the similarity bar
- * slightly, since two differently-titled series from the same imprint
- * matching this closely is unlikely to be a coincidence.
+ * subtitle/ruby fragments, punctuation, special-edition subtitles) that
+ * title parsing can't always fully strip. Both names must already be run
+ * through normalizeForMatch. An ISBN publisher-code match or a matching
+ * author on both sides relaxes the similarity bar, since either makes a
+ * coincidental near-match far less likely.
  */
 export function isLikelySameSeries(
   candidateNormalized: string,
   knownNormalized: string,
-  candidateIsbn?: string,
-  knownIsbn?: string,
+  corroboration: SeriesMatchCorroboration = {},
 ): boolean {
   if (!candidateNormalized || !knownNormalized) return false
   if (candidateNormalized === knownNormalized) return true
@@ -66,9 +85,11 @@ export function isLikelySameSeries(
   const score = similarity(candidateNormalized, knownNormalized)
   if (score >= SIMILARITY_THRESHOLD) return true
 
-  const candidateCode = isbnPublisherCode(candidateIsbn)
-  const knownCode = isbnPublisherCode(knownIsbn)
-  if (candidateCode && candidateCode === knownCode && score >= CORROBORATED_SIMILARITY_THRESHOLD) return true
+  const candidateCode = isbnPublisherCode(corroboration.candidateIsbn)
+  const knownCode = isbnPublisherCode(corroboration.knownIsbn)
+  const isbnCorroborated = Boolean(candidateCode && candidateCode === knownCode)
+  const authorCorroborated = authorsCorroborate(corroboration.candidateAuthor, corroboration.knownAuthor)
+  if ((isbnCorroborated || authorCorroborated) && score >= CORROBORATED_SIMILARITY_THRESHOLD) return true
 
   return false
 }

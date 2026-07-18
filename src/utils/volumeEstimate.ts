@@ -20,11 +20,19 @@ export function getOwnedMaxVolume(volumes: Pick<Volume, 'volumeNumber'>[]): numb
 // explicit user correction), otherwise estimatedTotalVolumeCount only if it
 // passes isValidEstimatedTotal. Returns undefined when neither applies, in
 // which case callers fall back to a plain owned-count display.
+//
+// A manual value is still clamped up to the owned max before display: it's
+// meant to be a floor the user set at some point, not a promise that never
+// goes stale, and volumes can be added faster than the background
+// self-heal (see volumeCheckScheduler) gets a chance to persist the
+// correction - this is the immediate, synchronous half of that guarantee,
+// so a contradiction like "全2巻中12巻" is never even shown for a moment.
 export function getDisplayTotalVolumeCount(
   series: Pick<Series, 'manualTotalVolumeCount' | 'estimatedTotalVolumeCount'>,
   volumes: Pick<Volume, 'volumeNumber'>[],
 ): number | undefined {
-  if (series.manualTotalVolumeCount) return series.manualTotalVolumeCount
+  const ownedMax = getOwnedMaxVolume(volumes)
+  if (series.manualTotalVolumeCount) return Math.max(series.manualTotalVolumeCount, ownedMax)
   const est = series.estimatedTotalVolumeCount
-  return isValidEstimatedTotal(est, getOwnedMaxVolume(volumes)) ? est : undefined
+  return isValidEstimatedTotal(est, ownedMax) ? est : undefined
 }

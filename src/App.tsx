@@ -25,6 +25,7 @@ import {
   type MergeResult,
 } from './db'
 import { shouldPromptBackup, shareOrDownloadJson } from './utils/backup'
+import { normalizeForMatch } from './utils/titleParsing'
 import { runBackgroundVolumeCheck } from './utils/volumeCheckScheduler'
 import { runBackgroundWishlistKanaCheck } from './utils/wishlistKanaScheduler'
 import type { Series, Volume, BackupMeta, WishlistItem, BackupExport } from './types'
@@ -270,6 +271,25 @@ export default function App() {
     await refresh()
   }
 
+  // Lets a one-time correction (e.g. a badly-cased/formatted title the first
+  // scanned volume happened to carry) stick going forward - resolveKnownSeriesName
+  // (AddScreen) always prefers whatever's already saved as the series' name,
+  // so renaming here is the only way to fix a name once it's locked in.
+  // Returns false (without saving) when the new name collides with a
+  // different already-registered series.
+  async function handleUpdateName(name: string): Promise<boolean> {
+    if (!selectedSeries) return false
+    const trimmed = name.trim()
+    if (!trimmed) return false
+    const collision = seriesList.some(
+      (s) => s.id !== selectedSeries.id && normalizeForMatch(s.name) === normalizeForMatch(trimmed),
+    )
+    if (collision) return false
+    await saveSeries({ ...selectedSeries, name: trimmed })
+    await refresh()
+    return true
+  }
+
   if (loading) {
     return <div className="loading-screen">読み込み中…</div>
   }
@@ -302,6 +322,7 @@ export default function App() {
           onDeleteVolume={handleDeleteVolume}
           onUpdateCover={handleUpdateCover}
           onUpdateTotalVolumeCount={handleUpdateTotalVolumeCount}
+          onUpdateName={handleUpdateName}
         />
       )}
 
