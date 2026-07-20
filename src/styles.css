@@ -216,9 +216,13 @@ body {
   background: var(--color-warn-bg);
 }
 
+/* Bottom-right, not top-right: the top row is reserved for 新刊/完結 (left)
+   and 予約 (right) - see .new-badge/.completed-badge/.upcoming-badge--corner.
+   Missing-volume can coexist with any of those, so it needs its own corner
+   rather than sharing top-right with 予約 and getting hidden behind it. */
 .warn-badge {
   position: absolute;
-  top: 4px;
+  bottom: 4px;
   right: 4px;
   background: var(--color-surface);
   border-radius: 50%;
@@ -268,6 +272,29 @@ body {
 .upcoming-badge--corner {
   left: auto;
   right: 4px;
+}
+
+/* Shares the new-badge/upcoming-badge top-left slot rather than needing its
+   own - a completed series never shows 新刊/予約 (see newRelease.ts), so the
+   slot is never contested. */
+.completed-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: var(--color-text-muted);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.completed-badge--inline {
+  position: static;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .upcoming-note {
@@ -435,6 +462,19 @@ body {
   background: var(--color-surface);
   color: inherit;
   font-size: 0.85rem;
+}
+
+.auto-update-note {
+  font-size: 0.75rem;
+}
+
+.completed-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
 }
 
 .series-name-row {

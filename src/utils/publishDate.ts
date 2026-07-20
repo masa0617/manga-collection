@@ -16,14 +16,15 @@ export function parsePublishDate(raw: string | undefined | null): string | undef
   return undefined
 }
 
-const NEW_RELEASE_WINDOW_DAYS = 14
-
-export function isRecentRelease(dateISO: string | undefined, now: Date = new Date()): boolean {
+// A release counts as "past" (eligible for the 新刊 badge) from the moment
+// its date has passed, with no cutoff after that - the badge is instead
+// time-unbounded and only clears once the volume is actually registered
+// (see hasNewRelease in newRelease.ts).
+export function isPastRelease(dateISO: string | undefined, now: Date = new Date()): boolean {
   if (!dateISO) return false
   const released = new Date(dateISO)
   if (Number.isNaN(released.getTime())) return false
-  const daysSince = (now.getTime() - released.getTime()) / (1000 * 60 * 60 * 24)
-  return daysSince >= 0 && daysSince <= NEW_RELEASE_WINDOW_DAYS
+  return released.getTime() <= now.getTime()
 }
 
 // Whether a date is still ahead of now - used to tell an announced-but-not-
@@ -33,6 +34,19 @@ export function isFutureRelease(dateISO: string | undefined, now: Date = new Dat
   const released = new Date(dateISO)
   if (Number.isNaN(released.getTime())) return false
   return released.getTime() > now.getTime()
+}
+
+// How far ahead of a future release date the 予約 badge starts showing.
+const RESERVATION_WINDOW_DAYS = 21
+
+// True from RESERVATION_WINDOW_DAYS before a future release date up through
+// the day before it (isFutureRelease itself becomes false once the release
+// date's instant has passed, which is what ends the window on release day).
+export function isWithinReservationWindow(dateISO: string | undefined, now: Date = new Date()): boolean {
+  if (!isFutureRelease(dateISO, now)) return false
+  const released = new Date(dateISO!)
+  const daysUntil = (released.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  return daysUntil <= RESERVATION_WINDOW_DAYS
 }
 
 export function formatJapaneseDate(dateISO: string): string {

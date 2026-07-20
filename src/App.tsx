@@ -271,6 +271,12 @@ export default function App() {
     await refresh()
   }
 
+  async function handleUpdateCompleted(completed: boolean) {
+    if (!selectedSeries) return
+    await saveSeries({ ...selectedSeries, isCompleted: completed })
+    await refresh()
+  }
+
   // Lets a one-time correction (e.g. a badly-cased/formatted title the first
   // scanned volume happened to carry) stick going forward - resolveKnownSeriesName
   // (AddScreen) always prefers whatever's already saved as the series' name,
@@ -322,6 +328,7 @@ export default function App() {
           onDeleteVolume={handleDeleteVolume}
           onUpdateCover={handleUpdateCover}
           onUpdateTotalVolumeCount={handleUpdateTotalVolumeCount}
+          onUpdateCompleted={handleUpdateCompleted}
           onUpdateName={handleUpdateName}
         />
       )}

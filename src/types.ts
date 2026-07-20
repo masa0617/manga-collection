@@ -47,6 +47,19 @@ export interface Series {
   // 'generated' - a last-resort on-device reading (see kanaGenerator.ts)
   // used only when neither an isbn nor an estimate lookup ever found one.
   kanaReadingSource?: 'isbn' | 'estimate' | 'generated'
+  // Manual flag marking the series as finished (no further volumes
+  // expected). Excludes it from the background NDL check entirely (see
+  // volumeCheckScheduler's stale filter) and from 新刊/予約 badge
+  // computation (see newRelease.ts), since a completed series has nothing
+  // left to detect.
+  isCompleted?: boolean
+  // Records the most recent automatic bump of manualTotalVolumeCount made by
+  // the background check (see withCorrectedManualTotal in
+  // volumeCheckScheduler) when a newly detected volume exceeded the user's
+  // manual value. Purely informational - shown on the detail screen so a
+  // jump in the manual total is traceable to when/why it happened instead of
+  // looking like an unexplained edit. Never read by any resolution logic.
+  manualTotalVolumeCountAutoUpdate?: { at: number; from: number; to: number }
 }
 
 export interface WishlistItem {

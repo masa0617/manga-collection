@@ -89,6 +89,11 @@ export async function runBackgroundVolumeCheck(callbacks: VolumeCheckCallbacks =
     const now = Date.now()
     const stale = all
       .filter((s) => {
+        // Completed series have nothing left to detect - never enter the
+        // check queue at all, regardless of cooldown/self-heal, so a stale
+        // cached estimate on a finished series is never refreshed or
+        // corrected either.
+        if (s.isCompleted) return false
         if (!s.lastVolumeCheckAt || now - s.lastVolumeCheckAt >= RECHECK_INTERVAL_MS) return true
         // Self-heal: an already-impossible cached estimate (0, or lower than
         // a volume number actually owned) or a contradicted manual total
@@ -175,11 +180,22 @@ async function checkOne(series: Series, ownedMax: number, callbacks: VolumeCheck
 // Bumps a manual total up (never down - it's still the user's floor) when
 // it's fallen below what's actually owned, or below a freshly-found valid
 // estimate (e.g. a new volume was catalogued after the user set the manual
-// value). Never touches a series with no manual value set at all.
+// value). Never touches a series with no manual value set at all. Records
+// the bump in manualTotalVolumeCountAutoUpdate purely so the detail screen
+// can show the user when/why their manual value changed - the resolution
+// logic itself (getDisplayTotalVolumeCount) never reads it, and the bumped
+// value is still just as "manual" as before (still wins over
+// estimatedTotalVolumeCount forever), so this can't be silently re-clobbered
+// by a later estimate.
 function withCorrectedManualTotal(series: Series, ownedMax: number, freshEstimate?: number): Series {
   if (series.manualTotalVolumeCount === undefined) return series
   const corrected = Math.max(series.manualTotalVolumeCount, ownedMax, freshEstimate ?? 0)
-  return corrected === series.manualTotalVolumeCount ? series : { ...series, manualTotalVolumeCount: corrected }
+  if (corrected === series.manualTotalVolumeCount) return series
+  return {
+    ...series,
+    manualTotalVolumeCount: corrected,
+    manualTotalVolumeCountAutoUpdate: { at: Date.now(), from: series.manualTotalVolumeCount, to: corrected },
+  }
 }
 
 // Last-resort fallback for a series still stuck with no reading after both

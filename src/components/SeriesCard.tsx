@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react'
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
-import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
+import { getUpcomingRelease, hasNewRelease } from '../utils/newRelease'
 import { getDisplayTotalVolumeCount } from '../utils/volumeEstimate'
 
 interface Props {
@@ -17,7 +17,7 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
   const hasMissing = getMissingVolumes(volumes.map((v) => v.volumeNumber)).length > 0
-  const isNewRelease = hasRecentNewRelease(series, volumes)
+  const isNewRelease = hasNewRelease(series, volumes)
   const upcomingRelease = getUpcomingRelease(series, volumes)
   const totalVolumeCount = getDisplayTotalVolumeCount(series, volumes)
 
@@ -63,6 +63,7 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
             <div className="series-card__placeholder">{series.name.slice(0, 1)}</div>
           )}
           {hasMissing && <span className="warn-badge">⚠️</span>}
+          {series.isCompleted && !editMode && <span className="completed-badge">完結</span>}
           {isNewRelease && !editMode && <span className="new-badge">新刊</span>}
           {upcomingRelease && !editMode && <span className="upcoming-badge upcoming-badge--corner">予約</span>}
         </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Series, Volume } from '../types'
 import { getMissingVolumes } from '../utils/missingVolumes'
-import { getUpcomingRelease, hasRecentNewRelease } from '../utils/newRelease'
+import { getUpcomingRelease, hasNewRelease } from '../utils/newRelease'
 import { formatJapaneseDate } from '../utils/publishDate'
 import { getDisplayTotalVolumeCount, getOwnedMaxVolume } from '../utils/volumeEstimate'
 import CoverPicker from './CoverPicker'
@@ -14,6 +14,7 @@ interface Props {
   onDeleteVolume: (volumeId: string) => void
   onUpdateCover: (coverUrl: string) => void
   onUpdateTotalVolumeCount: (count: number | undefined) => void
+  onUpdateCompleted: (completed: boolean) => void
   onUpdateName: (name: string) => Promise<boolean>
 }
 
@@ -25,6 +26,7 @@ export default function SeriesDetailScreen({
   onDeleteVolume,
   onUpdateCover,
   onUpdateTotalVolumeCount,
+  onUpdateCompleted,
   onUpdateName,
 }: Props) {
   const [editingTotal, setEditingTotal] = useState(false)
@@ -36,7 +38,7 @@ export default function SeriesDetailScreen({
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const missing = getMissingVolumes(volumes.map((v) => v.volumeNumber))
   const latestVolume = sorted[sorted.length - 1]
-  const isNewRelease = hasRecentNewRelease(series, volumes)
+  const isNewRelease = hasNewRelease(series, volumes)
   const upcomingRelease = getUpcomingRelease(series, volumes)
   const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
   const totalVolumeCount = getDisplayTotalVolumeCount(series, volumes)
@@ -120,6 +122,7 @@ export default function SeriesDetailScreen({
           ) : (
             <h1>
               {series.name}
+              {series.isCompleted && <span className="completed-badge completed-badge--inline">完結</span>}
               {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
               <button type="button" className="link-button link-button--inline" onClick={startEditingName}>
                 編集
@@ -160,6 +163,22 @@ export default function SeriesDetailScreen({
               </>
             )}
           </div>
+
+          {series.manualTotalVolumeCountAutoUpdate && (
+            <p className="detail-info__field detail-info__field--muted auto-update-note">
+              全{series.manualTotalVolumeCountAutoUpdate.from}巻→全{series.manualTotalVolumeCountAutoUpdate.to}巻に自動更新（
+              {formatJapaneseDate(new Date(series.manualTotalVolumeCountAutoUpdate.at).toISOString().slice(0, 10))}）
+            </p>
+          )}
+
+          <label className="completed-toggle-row">
+            <input
+              type="checkbox"
+              checked={series.isCompleted ?? false}
+              onChange={(e) => onUpdateCompleted(e.target.checked)}
+            />
+            完結済み（新刊・予約の自動チェックを対象外にします）
+          </label>
 
           {!isNewRelease && upcomingRelease && (
             <p className="detail-info__field upcoming-note">
