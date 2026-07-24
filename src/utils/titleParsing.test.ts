@@ -41,6 +41,15 @@ describe('formatCatalogAuthors', () => {
     expect(formatCatalogAuthors(['貴家悠原作'])).toBe('貴家悠')
   })
 
+  // Regression: occupation-noun labels (as opposed to short ONIX-style verb
+  // roles like 作画/原作) were previously missing from the role-label list
+  // entirely, so a name like "高橋慶太郎漫画家" passed through unstripped.
+  it('strips an occupation-noun role label glued on with no separator', () => {
+    expect(formatCatalogAuthors(['高橋慶太郎漫画家'])).toBe('高橋慶太郎')
+    expect(formatCatalogAuthors(['尾田栄一郎 漫画家'])).toBe('尾田栄一郎')
+    expect(formatCatalogAuthors(['石田スイ(イラストレーター)'])).toBe('石田スイ')
+  })
+
   it('strips birth/death year and role label together', () => {
     expect(formatCatalogAuthors(['尾田,栄一郎,1975- 著'])).toBe('尾田栄一郎')
   })

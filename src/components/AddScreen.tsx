@@ -59,10 +59,10 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
   // ruby fragments) via isLikelySameSeries rather than requiring exact
   // equality, since that noise is exactly what used to make the learned
   // title silently not apply.
-  function resolveKnownSeriesName(candidate: string, candidateIsbn?: string, candidateAuthor?: string): string {
+  function resolveKnownSeries(candidate: string, candidateIsbn?: string, candidateAuthor?: string): Series | undefined {
     const candidateNormalized = normalizeForMatch(candidate)
     const candidateAuthorNormalized = candidateAuthor ? normalizeForMatch(candidateAuthor) : undefined
-    const match = seriesList.find((s) =>
+    return seriesList.find((s) =>
       isLikelySameSeries(candidateNormalized, normalizeForMatch(s.name), {
         candidateIsbn,
         knownIsbn: seriesSampleIsbn[s.id],
@@ -70,7 +70,6 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
         knownAuthor: s.author ? normalizeForMatch(s.author) : undefined,
       }),
     )
-    return match?.name ?? candidate
   }
 
   async function handleDetected(detectedIsbn: string) {
@@ -80,13 +79,21 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
     const info = await lookupBookByIsbn(detectedIsbn)
     setLooking(false)
     if (info) {
+      let matchedSeries: Series | undefined
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(resolveKnownSeriesName(parsed.seriesName, detectedIsbn, info.author))
+        matchedSeries = resolveKnownSeries(parsed.seriesName, detectedIsbn, info.author)
+        setSeriesName(matchedSeries?.name ?? parsed.seriesName)
         const vol = info.volumeNumber ?? parsed.volumeNumber
         if (vol !== null && vol !== undefined) setVolumeNumber(String(vol))
       }
-      if (info.author) setAuthor(info.author)
+      // Prefer the already-registered spelling for this series (same
+      // reasoning as the learned title above) over whatever this fresh
+      // lookup parsed - keeps a one-time author correction (or a role-label
+      // artifact fixed by hand) applying to every later volume instead of
+      // re-introducing the same noise on each new scan.
+      if (matchedSeries?.author) setAuthor(matchedSeries.author)
+      else if (info.author) setAuthor(info.author)
       if (info.publisher) setPublisher(info.publisher)
       if (info.magazine) setMagazine(info.magazine)
       if (info.releaseDateISO) setReleaseDateISO(info.releaseDateISO)
@@ -108,13 +115,15 @@ export default function AddScreen({ onSaved, onCancel, prefillSeriesName, prefil
       // e.g. leaving the volume number from an earlier ISBN in place - is
       // worse than clobbering a manually-typed value the user is actively
       // about to replace by looking the ISBN up anyway.
+      let matchedSeries: Series | undefined
       if (info.title) {
         const parsed = parseVolumeFromTitle(info.title)
-        setSeriesName(resolveKnownSeriesName(parsed.seriesName, isbn, info.author))
+        matchedSeries = resolveKnownSeries(parsed.seriesName, isbn, info.author)
+        setSeriesName(matchedSeries?.name ?? parsed.seriesName)
         const vol = info.volumeNumber ?? parsed.volumeNumber
         setVolumeNumber(vol !== null && vol !== undefined ? String(vol) : '')
       }
-      setAuthor(info.author ?? '')
+      setAuthor(matchedSeries?.author ?? info.author ?? '')
       setPublisher(info.publisher ?? '')
       setMagazine(info.magazine ?? '')
       setReleaseDateISO(info.releaseDateISO)

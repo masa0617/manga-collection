@@ -9,14 +9,18 @@ function normalizeVolumeNumber(n: number): number {
   return Math.round(Number(n))
 }
 
+// Sweeps from volume 1 (not the lowest owned volume) up to the highest owned
+// volume: a collection that starts at 2 because volume 1 was never
+// registered is exactly the kind of gap this is meant to catch, and a
+// min..max sweep can never see it since the lowest owned volume always
+// trivially satisfies its own lower bound.
 export function getMissingVolumes(volumeNumbers: number[]): number[] {
   if (volumeNumbers.length === 0) return []
   const normalized = volumeNumbers.map(normalizeVolumeNumber)
-  const min = Math.min(...normalized)
   const max = Math.max(...normalized)
   const owned = new Set(normalized)
   const missing: number[] = []
-  for (let n = min; n <= max; n++) {
+  for (let n = 1; n <= max; n++) {
     if (!owned.has(n)) missing.push(n)
   }
   return missing

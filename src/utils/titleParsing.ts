@@ -150,7 +150,25 @@ function stripNonNumericParens(title: string): string {
 // one - even glued on with no separator, as some catalog fields do - is
 // implausible, so those are also stripped bare.
 const SINGLE_CHAR_ROLE_LABELS = ['著', '文', '画', '絵', '編', '訳']
-const MULTI_CHAR_ROLE_LABELS = ['作画', '原作', '脚本', '監修', '構成', '原案', '編著', '漫画']
+// Includes both short ONIX-style verb roles (作画/原作/etc.) and longer
+// occupation-noun labels (漫画家/イラストレーター/etc.) - some sources (seen
+// from Google Books-style records, e.g. "高橋慶太郎漫画家") report the
+// contributor's occupation rather than a responsibility-statement verb, with
+// the same glued-with-no-separator pattern.
+const MULTI_CHAR_ROLE_LABELS = [
+  '作画',
+  '原作',
+  '脚本',
+  '監修',
+  '構成',
+  '原案',
+  '編著',
+  '漫画',
+  '漫画家',
+  '作家',
+  'イラストレーター',
+  '原作者',
+]
 const SEPARATED_ROLE_SUFFIX = new RegExp(
   `(?:[\\s　/／\\\\＼]+[（(]?|[（(])(?:${[...SINGLE_CHAR_ROLE_LABELS, ...MULTI_CHAR_ROLE_LABELS].join('|')})[)）]?$`,
 )

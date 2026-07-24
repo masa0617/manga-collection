@@ -14,12 +14,23 @@ describe('getMissingVolumes', () => {
     expect(getMissingVolumes([1, 5, 8])).toEqual([2, 3, 4, 6, 7])
   })
 
-  it('returns nothing for a single volume', () => {
-    expect(getMissingVolumes([7])).toEqual([])
+  it('returns nothing for a single volume that is volume 1', () => {
+    expect(getMissingVolumes([1])).toEqual([])
   })
 
   it('returns nothing for an empty list', () => {
     expect(getMissingVolumes([])).toEqual([])
+  })
+
+  // Regression: a collection that starts at volume 2 (volume 1 was never
+  // registered - out of print, bought used missing the first book, etc.) is
+  // a gap in its own right and must be flagged even though every owned
+  // volume from the lowest one up is contiguous. A min..max sweep can never
+  // see this since the lowest owned volume trivially satisfies its own lower
+  // bound - the sweep must always start at 1, not at the lowest owned volume.
+  it('flags volume 1 as missing when the collection starts at volume 2', () => {
+    expect(getMissingVolumes([2, 3, 4])).toEqual([1])
+    expect(getMissingVolumes([7])).toEqual([1, 2, 3, 4, 5, 6])
   })
 
   it('order of input does not matter', () => {

@@ -278,7 +278,7 @@ export default function App() {
   }
 
   // Lets a one-time correction (e.g. a badly-cased/formatted title the first
-  // scanned volume happened to carry) stick going forward - resolveKnownSeriesName
+  // scanned volume happened to carry) stick going forward - resolveKnownSeries
   // (AddScreen) always prefers whatever's already saved as the series' name,
   // so renaming here is the only way to fix a name once it's locked in.
   // Returns false (without saving) when the new name collides with a
