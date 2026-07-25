@@ -62,6 +62,38 @@ describe('isLikelySameSeries', () => {
       }),
     ).toBe(true)
   })
+
+  // "デストロ246" (2012-2016) and "デストロ016" (2021-, a prequel) are two
+  // distinct series by the same author (高橋慶太郎) that happen to share a
+  // name prefix - similarity ~0.71, in the same corroborated-threshold band
+  // as the legitimate cases above. Neither author nor same-publisher ISBN
+  // corroboration should bridge a differing digit run like this.
+  it('rejects same-author titles that differ only in an embedded digit run', () => {
+    expect(isLikelySameSeries(normalizeForMatch('デストロ246'), normalizeForMatch('デストロ016'))).toBe(false)
+  })
+
+  it('does not let a matching author rescue titles differing in an embedded digit run', () => {
+    expect(
+      isLikelySameSeries(normalizeForMatch('デストロ246'), normalizeForMatch('デストロ016'), {
+        candidateAuthor: normalizeForMatch('高橋慶太郎'),
+        knownAuthor: normalizeForMatch('高橋慶太郎'),
+      }),
+    ).toBe(false)
+  })
+
+  // Real vol-1 ISBNs (via NDL Search): both Shogakukan/Sunday GX Comics, so
+  // the same-publisher ISBN-code proxy also matches on top of the author -
+  // this is the exact combination that triggered the original bug.
+  it('does not let a matching ISBN publisher code rescue titles differing in an embedded digit run', () => {
+    expect(
+      isLikelySameSeries(normalizeForMatch('デストロ246'), normalizeForMatch('デストロ016'), {
+        candidateIsbn: '9784091576637',
+        knownIsbn: '9784091573254',
+        candidateAuthor: normalizeForMatch('高橋慶太郎'),
+        knownAuthor: normalizeForMatch('高橋慶太郎'),
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('isbnPublisherCode', () => {

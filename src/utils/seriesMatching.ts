@@ -52,6 +52,27 @@ function authorsCorroborate(a?: string, b?: string): boolean {
   return a.includes(b) || b.includes(a)
 }
 
+// A digit run embedded in a title (as opposed to a volume-number suffix,
+// which callers already strip before this comparison runs - see
+// parseVolumeFromTitle) is usually part of the title's identity rather than
+// incidental noise: "デストロ246" vs "デストロ016" is the same author writing
+// two distinct series (one a prequel) that just happen to share a name
+// prefix, not wording drift on one series. Neither an author match nor a
+// same-publisher ISBN prefix is strong enough evidence to bridge a
+// difference like that, so any corroborated match is refused whenever both
+// sides contain digits and those digits differ - the exact-equality and
+// plain-prefix checks above still handle genuinely identical or
+// truncated/extended titles first.
+function extractDigits(s: string): string {
+  return s.match(/\d+/g)?.join('') ?? ''
+}
+
+function hasConflictingDigits(a: string, b: string): boolean {
+  const da = extractDigits(a)
+  const db = extractDigits(b)
+  return da !== '' && db !== '' && da !== db
+}
+
 /**
  * Whether a freshly-parsed candidate title likely refers to the same series
  * as an already-registered one, tolerating the residual noise (stray
@@ -84,6 +105,7 @@ export function isLikelySameSeries(
   if (Math.min(candidateNormalized.length, knownNormalized.length) < MIN_COMPARABLE_LENGTH) return false
   const score = similarity(candidateNormalized, knownNormalized)
   if (score >= SIMILARITY_THRESHOLD) return true
+  if (hasConflictingDigits(candidateNormalized, knownNormalized)) return false
 
   const candidateCode = isbnPublisherCode(corroboration.candidateIsbn)
   const knownCode = isbnPublisherCode(corroboration.knownIsbn)
