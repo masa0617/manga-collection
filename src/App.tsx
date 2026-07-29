@@ -377,6 +377,7 @@ export default function App() {
           onExport={handleBackup}
           onImport={handleImportBackup}
           lastBackupAt={backupMeta?.lastBackupAt ?? null}
+          totalOwnedVolumeCount={volumes.length}
         />
       )}
 

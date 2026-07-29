@@ -10,14 +10,16 @@ interface Props {
   onExport: () => void
   onImport: (data: BackupExport, mode: RestoreMode) => Promise<MergeResult | void>
   lastBackupAt: number | null
+  totalOwnedVolumeCount: number
 }
 
-export default function SettingsScreen({ onBack, onExport, onImport, lastBackupAt }: Props) {
+export default function SettingsScreen({ onBack, onExport, onImport, lastBackupAt, totalOwnedVolumeCount }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<RestoreMode>('merge')
   const [message, setMessage] = useState<string | null>(null)
   const [messageIsError, setMessageIsError] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [showTotalVolumeCount, setShowTotalVolumeCount] = useState(false)
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -78,6 +80,19 @@ export default function SettingsScreen({ onBack, onExport, onImport, lastBackupA
         </button>
         <h1>設定</h1>
       </header>
+
+      <section className="settings-section">
+        <h2 className="settings-section__title">総所持巻数</h2>
+        <p className="settings-section__desc">
+          登録されている全シリーズの所持巻数を合計します（ほしいものリストは含みません）。
+        </p>
+        <button type="button" className="button button--ghost" onClick={() => setShowTotalVolumeCount(true)}>
+          総所持巻数を確認
+        </button>
+        {showTotalVolumeCount && (
+          <p className="settings-message--success">合計{totalOwnedVolumeCount}冊</p>
+        )}
+      </section>
 
       <section className="settings-section">
         <h2 className="settings-section__title">バックアップ</h2>
