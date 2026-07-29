@@ -138,6 +138,14 @@ body {
 
 .series-card {
   position: relative;
+  /* Without this, the grid item's automatic minimum width falls back to its
+     content's min-content size, which for an <img> descendant is based on
+     the image's natural pixel dimensions - not its CSS-rendered size. Since
+     cover art varies in natural size, that inflates some "1fr" columns more
+     than others (uneven card widths, worse once lazy-loaded images resolve
+     their natural size at different times). Overriding to 0 makes every
+     column size purely from the 1fr track split, so cards stay uniform. */
+  min-width: 0;
 }
 
 .series-card__body {
@@ -216,18 +224,25 @@ body {
   background: var(--color-warn-bg);
 }
 
-/* Fixed top-right corner, always - 新刊/完結 own top-left (.new-badge/
-   .completed-badge) and never coexist with each other (a completed series
-   never shows 新刊, see newRelease.ts), so that slot is never contested.
-   予約 (.upcoming-badge--corner) also lives top-right and unlike 新刊/完結
-   CAN coexist with a missing-volume gap, so when both are present 予約 is
-   pushed down below this badge instead (.upcoming-badge--below-warn)
-   rather than sharing the same corner and getting hidden behind it. */
-.warn-badge {
+/* Top-right badge row: 巻抜け(⚠️) and 予約 share one fixed top-right slot,
+   laid out side by side in a row (via .series-card__corner--right) instead
+   of stacking vertically, so the pair is always one consistent row on every
+   card regardless of which of the two is present. 新刊/完結 own their own
+   top-left slot (.new-badge/.completed-badge) and never coexist with each
+   other (a completed series never shows 新刊, see newRelease.ts), so that
+   slot is never contested. */
+.series-card__corner--right {
   position: absolute;
   top: 4px;
   right: 4px;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.warn-badge {
+  flex-shrink: 0;
   background: var(--color-surface);
   border-radius: 50%;
   width: 22px;
@@ -260,9 +275,8 @@ body {
 }
 
 .upcoming-badge {
-  position: absolute;
-  top: 4px;
-  left: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
   background: var(--color-surface);
   color: var(--color-accent-dark);
   border: 1px solid var(--color-accent);
@@ -271,18 +285,6 @@ body {
   font-size: 0.65rem;
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-.upcoming-badge--corner {
-  left: auto;
-  right: 4px;
-}
-
-/* Shifted down below .warn-badge's 22px circle (top:4px + 22px + 4px gap)
-   when a missing-volume gap is also present on the same card - see
-   .warn-badge's comment for why the two need to stack instead of overlap. */
-.upcoming-badge--below-warn {
-  top: 30px;
 }
 
 /* Shares the new-badge/upcoming-badge top-left slot rather than needing its

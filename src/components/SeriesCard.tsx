@@ -64,18 +64,12 @@ export default function SeriesCard({ series, volumes, viewMode, editMode, onClic
           )}
           {series.isCompleted && !editMode && <span className="completed-badge">完結</span>}
           {isNewRelease && !editMode && <span className="new-badge">新刊</span>}
-          {upcomingRelease && !editMode && (
-            <span
-              className={
-                hasMissing
-                  ? 'upcoming-badge upcoming-badge--corner upcoming-badge--below-warn'
-                  : 'upcoming-badge upcoming-badge--corner'
-              }
-            >
-              予約
-            </span>
+          {(hasMissing || (upcomingRelease && !editMode)) && (
+            <div className="series-card__corner--right">
+              {upcomingRelease && !editMode && <span className="upcoming-badge">予約</span>}
+              {hasMissing && <span className="warn-badge">⚠️</span>}
+            </div>
           )}
-          {hasMissing && <span className="warn-badge">⚠️</span>}
         </div>
         <div className="series-card__title">{series.name}</div>
         <div className="series-card__count">

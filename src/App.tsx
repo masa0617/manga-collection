@@ -90,6 +90,14 @@ export default function App() {
     setBackupMeta(meta)
     setWishlistItems(w)
     setLoading(false)
+    // iOS Safari has a known bug where a fixed-position element (the bottom
+    // tab bar) doesn't repaint at its correct spot when page content shrinks
+    // below the current scroll offset without an explicit scroll event -
+    // e.g. deleting the last wishlist item collapses the list down to the
+    // much shorter empty-state message while `view` itself doesn't change,
+    // so the scrollTo-on-view-change effect below never fires. Nudging to
+    // the same (browser-clamped) scroll position forces that repaint.
+    requestAnimationFrame(() => window.scrollTo(0, window.scrollY))
   }
 
   useEffect(() => {
