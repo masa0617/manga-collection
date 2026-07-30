@@ -94,6 +94,16 @@ describe('isLikelySameSeries', () => {
       }),
     ).toBe(false)
   })
+
+  // Real NDL records for 幽☆遊☆白書 spell it with ☆, ・, or ★ depending on
+  // the catalog entry - normalizeForMatch now strips all three as decorative
+  // symbols, so the learned-title match no longer treats them as different
+  // series (previously registering "幽☆遊☆白書" then scanning a volume
+  // catalogued as "幽・遊・白書" created a second, duplicate series).
+  it('matches decorative-symbol variants of the same title (幽☆遊☆白書)', () => {
+    expect(isLikelySameSeries(normalizeForMatch('幽・遊・白書'), normalizeForMatch('幽☆遊☆白書'))).toBe(true)
+    expect(isLikelySameSeries(normalizeForMatch('幽★遊★白書'), normalizeForMatch('幽☆遊☆白書'))).toBe(true)
+  })
 })
 
 describe('isbnPublisherCode', () => {

@@ -67,7 +67,20 @@ async function lookupNdl(isbn: string): Promise<BookInfo | null> {
   if (!xmlText) return null
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml')
   if (doc.querySelector('parsererror')) return null
-  const item = doc.querySelector('item')
+  // NDL's isbn search isn't a strict exact-ISBN filter - it can return
+  // multiple items for a single queried ISBN, including ones for a
+  // *different* ISBN entirely (e.g. querying volume 5's ISBN also surfaced
+  // volume 1's record ahead of it). Blindly taking the first item meant the
+  // volume number came from whichever record NDL happened to rank first
+  // (often volume 1), not the one actually scanned. Only trust an item whose
+  // own dc:identifier matches the queried ISBN; if none do, fall through to
+  // openBD/Google in lookupBookByIsbn instead of reporting a wrong volume.
+  const targetIsbn = isbn.replace(/-/g, '')
+  const item = Array.from(doc.querySelectorAll('item')).find((it) =>
+    Array.from(it.getElementsByTagName('dc:identifier')).some(
+      (el) => (el.textContent ?? '').replace(/-/g, '') === targetIsbn,
+    ),
+  )
   if (!item) return null
   const rawTitle = item.getElementsByTagName('dc:title')[0]?.textContent?.trim()
   const title = rawTitle ? toHalfWidth(rawTitle) : undefined

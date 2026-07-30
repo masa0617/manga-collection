@@ -63,12 +63,33 @@ export function kanjiToNumber(raw: string): number | null {
   return result > 0 ? result : null
 }
 
+// A number trailing some non-numeric lead-in text, optionally followed by a
+// parenthesized annotation - covers dcndl:volume labels that prefix the
+// number with a story-arc name instead of (or in addition to) a plain "巻"/
+// "第...巻" marker, e.g. "火星編 1" (テラフォーマーズ), "暗黒武術会編 1"
+// (幽☆遊☆白書). Anchored to the end of the string, unlike
+// extractLeadingVolumeNumber's leading-number match, so the two together
+// cover both "number first" and "number last" label shapes.
+function extractTrailingVolumeNumber(label: string): number | null {
+  const match = toHalfWidth(label).match(/(\d{1,4})\s*(?:[\(（][^()（）]*[\)）])?\s*$/)
+  return match ? Number(match[1]) : null
+}
+
 // Extracts a volume number from a standalone label like "巻1", "第3巻" or "巻十一"
 // (e.g. NDL Search's dcndl:volume field, reported separately from the title).
+// Real-world labels are noisier than a bare number/kanji numeral: a leading
+// story-arc annotation ("火星編 1"), a leading number with a trailing
+// parenthetical annotation ("2 (祈りと呪いとキセキ)"), or both wrapped around
+// a "第...巻" marker ("第6巻 (暗黒武術会開幕!!の巻)") all show up in practice -
+// falls back to the same leading/trailing number extraction used for the
+// noisier title+author search (see extractLeadingVolumeNumber) whenever the
+// label isn't cleanly just a number or kanji numeral on its own.
 export function extractVolumeNumberFromLabel(label: string): number | null {
   const stripped = label.trim().replace(/^第/, '').replace(/^巻/, '').replace(/巻$/, '').trim()
   if (!stripped) return null
-  return kanjiToNumber(stripped)
+  const direct = kanjiToNumber(stripped)
+  if (direct !== null) return direct
+  return extractLeadingVolumeNumber(stripped) ?? extractTrailingVolumeNumber(stripped)
 }
 
 // A looser sibling of extractVolumeNumberFromLabel for scanning dcndl:volume
@@ -94,10 +115,24 @@ function stripParallelTitle(title: string): string {
   return idx === -1 ? title : title.slice(0, idx).trim()
 }
 
+// Decorative symbols used as stylized separators/accents within official
+// titles - different catalog sources (or different print editions/reissues
+// of the same volume) disagree on which one they use, e.g. "幽☆遊☆白書" vs
+// "幽・遊・白書" vs "幽★遊★白書" are all real records for the same series.
+// Stripped entirely before matching so that stylization drift alone never
+// causes a spurious "different series" verdict - see isLikelySameSeries.
+// Not used for display: cleanSeriesName (which feeds the actual parsed
+// title) leaves these untouched.
+const DECORATIVE_SYMBOLS = /[☆★♪♬♡♥●○◎◇◆■□※〇・†‡]/g
+
 // Normalizes a title/series name for equality comparisons (matching a fresh
 // scan against an already-registered series), not for display.
 export function normalizeForMatch(name: string): string {
-  return toHalfWidth(name).trim().toLowerCase().replace(/\s+/g, '')
+  return toHalfWidth(name)
+    .replace(DECORATIVE_SYMBOLS, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
 }
 
 // Bibliographic records commonly separate a subtitle with " : " (ISBD
@@ -117,6 +152,36 @@ function stripColonSubtitle(title: string): string {
   // (e.g. "鬼滅の刃 : ヒノカミ血風譚 1") - keep it so the volume-marker
   // patterns below can still find it after the subtitle itself is dropped.
   const trailingVolume = after.match(/(第\s*\d{1,4}\s*巻|\d{1,4})\s*$/)
+  return trailingVolume ? `${before.trim()} ${trailingVolume[1]}` : before.trim()
+}
+
+// Some Japanese bibliographic sources wrap a subtitle in matching dashes
+// instead of (or in addition to) an ISBD colon, e.g. "終の退魔師-エンダーガ
+// イスター-" or "終の退魔師 ―エンダーガイスター―<注記> 13". This is what
+// makes a learned-title match silently stop applying: the user registers a
+// series after manually stripping a dash-wrapped subtitle, then the next
+// scan's fresh lookup still carries it, and the un-stripped subtitle makes
+// the parsed name too different from the registered one for
+// isLikelySameSeries to accept. Stripped before the volume-marker patterns
+// below, same treatment as stripColonSubtitle - but only when the opening
+// dash isn't glued to an ASCII/alphanumeric token, for the same "Re:ゼロ..."
+// -style reason stripColonSubtitle guards against.
+// Deliberately excludes "ー" (the katakana prolonged-sound mark, U+30FC):
+// it's common as an ordinary word-internal character (e.g. "ハンター×ハンタ
+// ー" has two), so treating it as a subtitle-wrap delimiter would silently
+// truncate titles that have nothing to do with a subtitle.
+const DASH_WRAP_CLASS = '\\-\u2010\u2011\u2012\u2013\u2014\u2015'
+const DASH_SUBTITLE = new RegExp(
+  `^(.+?)[ 　]?[${DASH_WRAP_CLASS}]([^${DASH_WRAP_CLASS}]+)[${DASH_WRAP_CLASS}][ 　]*(.*)$`,
+)
+
+function stripDashSubtitle(title: string): string {
+  const match = title.match(DASH_SUBTITLE)
+  if (!match) return title
+  const before = match[1]
+  const trailing = match[3]
+  if (!before || /[A-Za-z0-9]/.test(before[before.length - 1])) return title
+  const trailingVolume = trailing.match(/(第\s*\d{1,4}\s*巻|\d{1,4})\s*$/)
   return trailingVolume ? `${before.trim()} ${trailingVolume[1]}` : before.trim()
 }
 
@@ -222,7 +287,7 @@ const VOLUME_PATTERNS: RegExp[] = [
 
 export function parseVolumeFromTitle(rawTitle: string): ParsedTitle {
   const normalized = stripParallelTitle(toHalfWidth(rawTitle.trim()))
-  const withoutSubtitle = stripNonNumericParens(stripColonSubtitle(normalized))
+  const withoutSubtitle = stripNonNumericParens(stripDashSubtitle(stripColonSubtitle(normalized)))
   for (const pattern of VOLUME_PATTERNS) {
     const match = withoutSubtitle.match(pattern)
     if (!match) continue
