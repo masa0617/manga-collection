@@ -136,6 +136,48 @@ describe('parseVolumeFromTitle', () => {
       volumeNumber: 1,
     })
   })
+
+  // Real openBD title for NARUTO vol. 58 - NDL's old-style "巻ノN" volume
+  // marker (with a ノ connector between 巻 and the number) shows up directly
+  // in the title text when NDL itself has no record for the ISBN and the
+  // lookup falls back to openBD/Google. Previously unrecognized entirely,
+  // leaving "巻ノ58 (...)" stuck in the title and the volume number blank.
+  it('parses a "巻ノN" volume marker with a trailing parenthesized annotation (NARUTO)', () => {
+    expect(parseVolumeFromTitle('Naruto. 巻ノ58 (ナルトvsイタチ!!)')).toEqual({
+      seriesName: 'Naruto',
+      volumeNumber: 58,
+    })
+  })
+
+  // A real (if rare) NDL dcndl:volume label for a NARUTO tie-in uses a kanji
+  // numeral instead of an arabic one after the ノ connector.
+  it('parses a "巻ノ<kanji numeral>" volume marker', () => {
+    expect(parseVolumeFromTitle('NARUTOーナルトー 巻ノ一')).toEqual({
+      seriesName: 'NARUTOーナルトー',
+      volumeNumber: 1,
+    })
+  })
+
+  it('parses a "の" variant of the 巻 connector', () => {
+    expect(parseVolumeFromTitle('サンプルタイトル 巻の三')).toEqual({
+      seriesName: 'サンプルタイトル',
+      volumeNumber: 3,
+    })
+  })
+
+  // Regression: a title whose own name legitimately ends in "ー" (the
+  // katakana prolonged-sound mark) previously had that final character
+  // silently chopped off by cleanSeriesName, which treated it as a
+  // strippable trailing separator - the same character stripDashSubtitle
+  // already deliberately excludes for this exact reason (see
+  // "does not treat the katakana prolonged-sound mark as a subtitle-wrap
+  // delimiter" above).
+  it('does not strip a title-final katakana prolonged-sound mark (regression)', () => {
+    expect(parseVolumeFromTitle('NARUTOーナルトー 1')).toEqual({
+      seriesName: 'NARUTOーナルトー',
+      volumeNumber: 1,
+    })
+  })
 })
 
 describe('normalizeForMatch', () => {

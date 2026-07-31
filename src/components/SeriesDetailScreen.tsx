@@ -37,7 +37,6 @@ export default function SeriesDetailScreen({
 
   const sorted = [...volumes].sort((a, b) => a.volumeNumber - b.volumeNumber)
   const missing = getMissingVolumes(volumes.map((v) => v.volumeNumber))
-  const latestVolume = sorted[sorted.length - 1]
   const isNewRelease = hasNewRelease(series, volumes)
   const upcomingRelease = getUpcomingRelease(series, volumes)
   const representativeCover = series.customCoverUrl || sorted[0]?.coverImageUrl
@@ -123,7 +122,6 @@ export default function SeriesDetailScreen({
             <h1>
               {series.name}
               {series.isCompleted && <span className="completed-badge completed-badge--inline">完結</span>}
-              {isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
               <button type="button" className="link-button link-button--inline" onClick={startEditingName}>
                 編集
               </button>
@@ -200,10 +198,7 @@ export default function SeriesDetailScreen({
         <div className="volume-list">
           {sorted.map((v) => (
             <div className="volume-row" key={v.id}>
-              <span>
-                {v.volumeNumber}巻
-                {v.id === latestVolume?.id && isNewRelease && <span className="new-badge new-badge--inline">新刊</span>}
-              </span>
+              <span>{v.volumeNumber}巻</span>
               <button
                 className="link-button link-button--danger"
                 onClick={() => {

@@ -3,7 +3,13 @@ export interface ParsedTitle {
   volumeNumber: number | null
 }
 
-const TRAILING_SEPARATORS = /[\s　\-‐-‒–—―ー:：・.。]+$/
+// Deliberately excludes "ー" (the katakana prolonged-sound mark, U+30FC):
+// it's common as an ordinary word-final character (e.g. a title ending in
+// "...ー" before a trailing volume number), so treating it as a strippable
+// separator would silently chop the last character off titles like that -
+// same reasoning as DASH_WRAP_CLASS below, which excludes it for the same
+// reason.
+const TRAILING_SEPARATORS = /[\s　\-‐-‒–—―:：・.。]+$/
 
 function cleanSeriesName(raw: string): string {
   return raw.replace(TRAILING_SEPARATORS, '').trim()
@@ -272,14 +278,27 @@ export function formatCatalogAuthors(rawValues: string[]): string {
     .join('、')
 }
 
+// Matches either an arabic-digit run or a plain kanji numeral (see
+// kanjiToNumber) wherever a volume patterns below expects a number - real
+// bibliographic titles use both depending on source/era (e.g. NARUTO's old-
+// style "巻ノ58", vs. the far more common arabic "第15巻").
+const VOLUME_NUMBER = '(?:\\d{1,4}|[〇一二三四五六七八九十百千]{1,8})'
+
 // ISBNs don't encode a volume number in any standard, decodable way, so the
 // best signal available is the volume marker embedded in the book title
 // returned by the lookup APIs. Real-world examples seen from openBD/Google:
-// "ONE PIECE 105", "鬼滅の刃(1)", "薬屋のひとりごと 第15巻", "One piece 巻1".
+// "ONE PIECE 105", "鬼滅の刃(1)", "薬屋のひとりごと 第15巻", "One piece 巻1",
+// "Naruto. 巻ノ58 (ナルトvsイタチ!!)" (openBD's title for a series still
+// catalogued under NDL's old "巻ノN" convention - the ノ/の connector and the
+// occasional kanji numeral it carries, e.g. "巻ノ一", previously weren't
+// recognized at all, leaving the whole marker stuck in the title and the
+// volume number blank).
 const VOLUME_PATTERNS: RegExp[] = [
-  /^(.*?)[\s　]*第\s*(\d{1,4})\s*巻\s*$/,
-  /^(.*?)[\s　]*(\d{1,4})\s*巻\s*$/,
-  /^(.*?)[\s　]*巻\s*(\d{1,4})\s*$/,
+  new RegExp(`^(.*?)[\\s　]*第\\s*(${VOLUME_NUMBER})\\s*巻\\s*$`),
+  new RegExp(`^(.*?)[\\s　]*(${VOLUME_NUMBER})\\s*巻\\s*$`),
+  // "巻N" / "巻ノN" / "巻の一" - a leading 巻 marker, optionally followed by
+  // the ノ/の connector some older-style labels use before the number.
+  new RegExp(`^(.*?)[\\s　]*巻[ノの]?\\s*(${VOLUME_NUMBER})\\s*$`),
   /^(.*?)[\s　]*[\(（]\s*(\d{1,4})\s*[\)）]\s*$/,
   /^(.*?)[\s　]+[Vv][Oo][Ll]\.?\s*(\d{1,4})\s*$/,
   /^(.*?)[\s　]+(\d{1,4})\s*$/,
@@ -292,8 +311,8 @@ export function parseVolumeFromTitle(rawTitle: string): ParsedTitle {
     const match = withoutSubtitle.match(pattern)
     if (!match) continue
     const seriesName = cleanSeriesName(match[1])
-    const volumeNumber = Number(match[2])
-    if (seriesName && Number.isInteger(volumeNumber) && volumeNumber > 0) {
+    const volumeNumber = kanjiToNumber(match[2])
+    if (seriesName && volumeNumber !== null && volumeNumber > 0) {
       return { seriesName, volumeNumber }
     }
   }

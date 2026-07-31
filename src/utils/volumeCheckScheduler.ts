@@ -3,6 +3,7 @@ import { getAllSeries, getAllVolumes, saveSeries, getBackupMeta, saveBackupMeta 
 import type { Series } from '../types'
 import { isValidEstimatedTotal } from './volumeEstimate'
 import { generateKanaReading } from './kanaGenerator'
+import { isPastRelease } from './publishDate'
 
 // A manual total is contradicted when it's set but doesn't cover what's
 // actually owned - see getDisplayTotalVolumeCount's display-time clamp for
@@ -160,7 +161,7 @@ async function checkOne(series: Series, ownedMax: number, callbacks: VolumeCheck
         ? { kanaReading: estimate.titleReading, kanaReadingSource: 'estimate' as const }
         : {}),
     }
-    const final = withCorrectedManualTotal(await withGeneratedKanaFallback(updated), ownedMax, estimate?.totalVolumeCount)
+    const final = withCorrectedManualTotal(await withGeneratedKanaFallback(updated), ownedMax)
     await saveSeries(final)
     callbacks.onSeriesUpdated?.(final)
   } catch (err) {
@@ -177,19 +178,33 @@ async function checkOne(series: Series, ownedMax: number, callbacks: VolumeCheck
   }
 }
 
-// Bumps a manual total up (never down - it's still the user's floor) when
-// it's fallen below what's actually owned, or below a freshly-found valid
-// estimate (e.g. a new volume was catalogued after the user set the manual
-// value). Never touches a series with no manual value set at all. Records
-// the bump in manualTotalVolumeCountAutoUpdate purely so the detail screen
-// can show the user when/why their manual value changed - the resolution
-// logic itself (getDisplayTotalVolumeCount) never reads it, and the bumped
-// value is still just as "manual" as before (still wins over
+// A manual total is meant to stay fixed ("基本的に不変") - it's only ever
+// bumped up (never down) in exactly two situations: it's fallen below what's
+// actually owned, or a new release beyond it has actually been confirmed.
+// The second case reuses hasNewRelease's own gate (estimatedTotalVolumeCount
+// > ownedMax AND its release date has passed - see newRelease.ts) rather
+// than just following any fresher/bigger raw estimate: an estimate can
+// update to reflect an announced-but-not-yet-released preorder volume well
+// before it actually comes out (see estimatedTotalVolumeCount's own
+// unconditional refresh above, which intentionally does track those early),
+// and a mere announcement must not silently override the user's manual
+// value - only an actual release does, and then only enough to cover it.
+// Never touches a series with no manual value set at all. Records the bump
+// in manualTotalVolumeCountAutoUpdate purely so the detail screen can show
+// the user when/why their manual value changed - the resolution logic
+// itself (getDisplayTotalVolumeCount) never reads it, and the bumped value
+// is still just as "manual" as before (still wins over
 // estimatedTotalVolumeCount forever), so this can't be silently re-clobbered
 // by a later estimate.
-function withCorrectedManualTotal(series: Series, ownedMax: number, freshEstimate?: number): Series {
+export function withCorrectedManualTotal(series: Series, ownedMax: number): Series {
   if (series.manualTotalVolumeCount === undefined) return series
-  const corrected = Math.max(series.manualTotalVolumeCount, ownedMax, freshEstimate ?? 0)
+  const releasedTotal =
+    series.estimatedTotalVolumeCount !== undefined &&
+    series.estimatedTotalVolumeCount > ownedMax &&
+    isPastRelease(series.estimatedLatestReleaseDateISO)
+      ? series.estimatedTotalVolumeCount
+      : 0
+  const corrected = Math.max(series.manualTotalVolumeCount, ownedMax, releasedTotal)
   if (corrected === series.manualTotalVolumeCount) return series
   return {
     ...series,
